@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "name": "阿里邮箱高级自动化",
+    "version": "1.0",
+    "description": "智能处理阿里邮箱操作，实现高级自定义邮件规则。",
+    "permissions": [
+      "scripting",
+      "activeTab",
+      "storage"
+    ],
+    "host_permissions": [
+      "*://qiye.aliyun.com/*"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [
+      {
+        "matches": ["*://qiye.aliyun.com/*"],
+        "js": ["content.js"],
+        "run_at": "document_start"
+      }
+    ],
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "options_page": "options.html",
+    "web_accessible_resources": [
+      {
+        "resources": [ "icons/*.png" ],
+        "matches": [ "<all_urls>" ]
+      }
+    ]
+  }

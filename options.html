@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>管理收信规则</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .controls button { margin-right: 10px; padding: 8px 15px; cursor: pointer; }
+        #rulesList { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #rulesList th, #rulesList td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #rulesList th { background-color: #f2f2f2; }
+        #rulesList td button { margin-right: 5px; padding: 5px 10px; cursor: pointer; }
+        .rule-status-toggle {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+            background-color: #ccc;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .rule-status-toggle.enabled { background-color: #28a745; }
+        .rule-status-toggle:before {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: white;
+            top: 2px;
+            left: 2px;
+            transition: 0.3s;
+        }
+        .rule-status-toggle.enabled:before {
+            transform: translateX(20px);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1; 
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.4); 
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 3% auto; 
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%; 
+            max-width: 800px;
+            border-radius: 8px;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input[type="text"], 
+        .form-group select, 
+        .form-group textarea {
+            width: calc(100% - 16px);
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+        .form-group input[type="text"]:focus, 
+        .form-group select:focus, 
+        .form-group textarea:focus {
+            border-color: #007bff;
+        }
+        /* 规则名称行的特殊样式 */
+        .rule-name-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .rule-name-row input[type="text"] {
+            width: 300px;
+            flex: none;
+        }
+        .rule-name-row label {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+        }
+        .checkbox-group label { margin-right: 15px; display: inline-block; }
+        
+        /* 条件组和操作组通用样式 */
+        .condition-group,
+        .action-group {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+            background-color: #f9f9f9;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+        }
+        .condition-group:last-child,
+        .action-group:last-child {
+            margin-bottom: 0;
+        }
+        .condition-header,
+        .action-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            min-width: 100px;
+        }
+        .condition-header input[type="checkbox"],
+        .condition-header input[type="radio"],
+        .action-header input[type="checkbox"],
+        .action-header input[type="radio"] {
+            margin: 0;
+        }
+        .condition-header label,
+        .action-header label {
+            margin: 0;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .condition-content,
+        .action-content {
+            display: flex;
+            flex: 1;
+            align-items: center;
+            gap: 15px;
+            margin: 0;
+        }
+        
+        /* 关键字输入组样式 */
+        .keywords-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin: 0;
+            flex: 1;
+        }
+        .keyword-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 4px 8px;
+        }
+        .keyword-item input[type="text"] {
+            width: 120px;
+            border: none;
+            outline: none;
+            padding: 4px;
+            font-size: 14px;
+        }
+        .keyword-item select {
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 12px;
+            color: #666;
+            min-width: 40px;
+        }
+        .keyword-item button {
+            padding: 2px 6px;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #f5f5f5;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .keyword-item button:hover {
+            background: #e5e5e5;
+        }
+        .add-keyword-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            cursor: pointer;
+            border: 1px solid #007bff;
+            border-radius: 50%;
+            background: #fff;
+            color: #007bff;
+            font-size: 18px;
+            line-height: 1;
+        }
+        .add-keyword-btn:hover {
+            background: #007bff;
+            color: white;
+        }
+        
+        /* 表单底部按钮样式 */
+        .form-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .form-buttons button {
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            border: 1px solid transparent;
+        }
+        .form-buttons .submit-btn {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .form-buttons .submit-btn:hover {
+            background: #0056b3;
+        }
+        .form-buttons .cancel-btn {
+            background: #fff;
+            color: #666;
+            border-color: #ddd;
+        }
+        .form-buttons .cancel-btn:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+        .action-group.vertical {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .action-group.vertical .action-content {
+            margin-top: 10px;
+        }
+        .action-group.vertical textarea {
+            min-height: 80px;
+            resize: vertical;
+            width: 100%;
+        }
+        /* 规则类型选择样式 */
+        .rule-type-select {
+            margin: 15px 0;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .rule-type-select label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .rule-type-select input[type="radio"] {
+            margin: 0;
+        }
+        
+        /* 操作组容器 */
+        .actions-container {
+            margin-top: 15px;
+        }
+
+        /* 模态框标题样式 */
+        .modal-title {
+            text-align: center;
+            margin: 0 0 20px 0;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            font-size: 18px;
+        }
+
+        /* 标签输入组样式 */
+        .tags-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            min-height: 36px;
+            align-items: center;
+        }
+        .tags-input-container.focused {
+            border-color: #007bff;
+        }
+        .tag-item {
+            display: flex;
+            align-items: center;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 2px 8px;
+            font-size: 14px;
+            gap: 6px;
+        }
+        .tag-item .remove-tag {
+            cursor: pointer;
+            color: #666;
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px;
+        }
+        .tag-item .remove-tag:hover {
+            color: #dc3545;
+        }
+        .tags-input {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 60px;
+            padding: 4px 0;
+            font-size: 14px;
+        }
+        .tags-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        .tags-dropdown.show {
+            display: block;
+        }
+        .tags-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        .tags-dropdown-item:hover {
+            background: #f8f9fa;
+        }
+        .tags-wrapper {
+            position: relative;
+            flex: 1;
+        }
+
+        /* 多选下拉框样式 */
+        .multi-select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        .multi-select-box {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+            min-height: 36px;
+            padding: 4px 8px;
+            cursor: pointer;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .multi-select-box.disabled {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
+        .multi-select-box:not(.disabled):hover {
+            border-color: #b3b3b3;
+        }
+        .multi-select-box.focused:not(.disabled) {
+            border-color: #007bff;
+        }
+        .selected-tag {
+            display: flex;
+            align-items: center;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 2px 8px;
+            font-size: 14px;
+            gap: 6px;
+        }
+        .selected-tag .remove-tag {
+            cursor: pointer;
+            color: #666;
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px;
+        }
+        .selected-tag .remove-tag:hover {
+            color: #dc3545;
+        }
+        .placeholder {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .multi-select-dropdown.show {
+            display: block;
+        }
+        .multi-select-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .multi-select-item:hover {
+            background: #f8f9fa;
+        }
+        .multi-select-item.selected {
+            background: #e9ecef;
+        }
+        .multi-select-item input[type="checkbox"] {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>管理收信规则</h1>
+
+    <div class="controls">
+        <button id="newRuleBtn">新建规则</button>
+        <button id="manualExecuteBtn" disabled>手动执行规则 (未实现)</button>
+        <button id="deleteSelectedBtn" disabled>删除选中 (未实现)</button>
+    </div>
+
+    <table id="rulesList">
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="selectAllRules" title="全选/全不选"></th>
+                <th>名称</th>
+                <th>操作</th>
+                <th>状态</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+
+    <div id="ruleModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="modalTitle" class="modal-title">新建收信规则</h2>
+            <form id="ruleForm">
+                <input type="hidden" id="ruleId">
+                <div class="form-group">
+                    <label for="ruleName">规则名称</label>
+                    <div class="rule-name-row">
+                        <input type="text" id="ruleName" required>
+                        <label><input type="checkbox" id="ruleEnabled"> 启用</label>
+                    </div>
+                </div>
+
+                <h3>收信条件</h3>
+                <hr>
+                
+                <!-- 发件人地址条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="senderConditionToggle" disabled>
+                        <label>发件人地址</label>
+                    </div>
+                    <div class="condition-content">
+                        <select disabled><option>包含联系人</option></select>
+                        <input type="text" disabled placeholder="输入发件人地址">
+                    </div>
+                </div>
+
+                <!-- 收件人地址条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="recipientConditionToggle" disabled>
+                        <label>收件人地址</label>
+                    </div>
+                    <div class="condition-content">
+                        <select disabled><option>包含联系人</option></select>
+                        <input type="text" disabled placeholder="输入收件人地址">
+                    </div>
+                </div>
+
+                <!-- 主题条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="subjectConditionToggle" disabled>
+                        <label>主题</label>
+                    </div>
+                    <div class="condition-content">
+                        <select id="subjectConditionType" disabled>
+                            <option value="include">包含关键字</option>
+                            <option value="exclude">不包含关键字</option>
+                        </select>
+                        <label><input type="checkbox" id="subjectCaseSensitive" disabled> 区分大小写</label>
+                        <div class="keywords-container" id="subjectKeywordsContainer"></div>
+                    </div>
+                </div>
+
+                <!-- 正文条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="bodyConditionToggle">
+                        <label>正文</label>
+                    </div>
+                    <div class="condition-content">
+                        <select id="bodyConditionType" disabled>
+                            <option value="include">包含关键字</option>
+                            <option value="exclude">不包含关键字</option>
+                        </select>
+                        <label><input type="checkbox" id="bodyCaseSensitive" disabled> 区分大小写</label>
+                        <div class="keywords-container" id="bodyKeywordsContainer"></div>
+                    </div>
+                </div>
+
+                <!-- 附件条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="attachmentConditionToggle" disabled>
+                        <label>附件</label>
+                    </div>
+                    <div class="condition-content">
+                        <select disabled>
+                            <option>带附件</option>
+                            <option>不带附件</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3>执行操作</h3>
+                <hr>
+                
+                <!-- 规则类型选择 -->
+                <div class="rule-type-select">
+                    <label><input type="radio" name="actionType" value="normal" checked> 普通规则</label>
+                    <label><input type="radio" name="actionType" value="delete" disabled> 彻底删除 (未实现)</label>
+                </div>
+
+                <!-- 具体操作选项（仅普通规则时显示） -->
+                <div class="actions-container" id="normalRuleActions">
+                    <div class="action-group">
+                        <div class="action-header">
+                            <input type="checkbox" id="moveToFolderAction">
+                            <label>移动到文件夹</label>
+                        </div>
+                        <div class="action-content">
+                            <select id="folderSelect" disabled>
+                                <option value="">请选择文件夹</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="action-group">
+                        <div class="action-header">
+                            <input type="checkbox" id="setLabelAction">
+                            <label>设置标签</label>
+                        </div>
+                        <div class="action-content">
+                            <div class="multi-select-wrapper">
+                                <div class="multi-select-box disabled" id="tagSelect">
+                                    <span class="placeholder">请选择标签</span>
+                                </div>
+                                <div class="multi-select-dropdown" id="tagDropdown"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-group">
+                        <div class="action-header">
+                            <input type="checkbox" id="markReadAction">
+                            <label>将邮件标记为已读</label>
+                        </div>
+                    </div>
+
+                    <div class="action-group">
+                        <div class="action-header">
+                            <input type="checkbox" disabled>
+                            <label>自动转发给</label>
+                        </div>
+                        <div class="action-content">
+                            <input type="text" disabled>
+                        </div>
+                    </div>
+
+                    <div class="action-group vertical">
+                        <div class="action-header">
+                            <input type="checkbox" disabled>
+                            <label>自动回复</label>
+                        </div>
+                        <div class="action-content">
+                            <textarea disabled></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-buttons">
+                    <button type="button" class="cancel-btn">取消</button>
+                    <button type="submit" class="submit-btn">保存规则</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 id="detailModalTitle">规则详情</h2>
+            <h3>收信条件</h3>
+            <hr>
+            <div id="detailConditions">
+                </div>
+            <h3>执行操作</h3>
+            <hr>
+            <div id="detailActions">
+                </div>
+        </div>
+    </div>
+
+    <script src="options.js"></script>
+</body>
+</html>

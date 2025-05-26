@@ -1,0 +1,21 @@
+fetch("https://qiye.aliyun.com/alimail/ajax/mail/changeTags.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "cna=kP9jIDswo2YCAd5BtRlFHFL8; channel=MdYG8uAl8cY%2FAlSiVFlnm9o8%2BKau5h892BWk862L46iljMJjhtrRGn0rZXxbZ7VuFN8Fgz%2BJQ7kEUUPhPAq9WQ%3D%3D; tfstk=gzpIjeO6ry4CKozMx2nNcDWiJtXSuUMVvusJm3eU29Bp2TtJqa7FaaR1FFYQYW-y2aTW7NYrxglHNTT97B7pz9zSFF_GUwJeTQO6-nCeP3mh2aLJPaRE_x-HxTX-u8Mq3H2Bc8q6dTUyX9jr3Ru9gx-HxlB-uqkq3u6EAzTRyUCd6GIcWMUJy6HtfgIzJ7epyhn1SgjdvwILWGIlv7BReUKtfgbOybzL5glC2HiHhtncfJbwvNw8edHhOZtLa8eJCM1BbHQ6AH91A6_AsioC4pLw2pJhsfVNEhRXPQLx7W7pGiT1gBgbdETh2F6eH0chs_pWFGAiP7_XwHRDw1iKph6CRE9MWuFCdQLHF6AQqmxOpFAco6hiSG9e3__c1P3pbh_dGQTES8QeGhL1gdza3tdD5L1AHgRL3Z6W87Z1i8I1uci_Z7m1ucyg44K5G6IGvxosfPNuo8euJci_JQ1djMdrfca_i; isg=BNjYcRLMBKr09ifi0ykCq76dqQZqwTxLOzyTJhLKFpPGrXyXutdi2zSO4e2dg_Qj; alimail_browser_instance=dC04ODcwNTYtVXlNQ3pY4415; alimail_sid=CSJ66XC1-HFOV3O7RAIC5N4A0ZGBA3-NINNT1BM-O7H; oauth_login_mode=true; alimail_sdata0=a24zos5gOAbHitWQr5w%2FABlIsuR1dPYQNpylqlVcCN17eFcDQqNYVfPH%2FK9OQ90pkt7bC652EM0r13YqCJcMTBz77CiToVX5Z3n9vLGDNI57jI4kEYnVe18thqswRt%2F4q8MezjngJ8ZmEPd7ejoVhA%3D%3D; JSESSIONID=NJK66FD1-NBOV7G3WC5REB8KJ5W912-RONNT1BM-8XFR; tmp0=z9iJo4G16CIJAagZ7lKwaIJqVTUBj%2BzKzQTT%2BC8NmcEg2Mdc6QL66itkIVKeSmzTHuFU9qHn5rUv4BqeRaBoTfox4eTHAGRHV1LaKgVKuq%2FyHWT10zql7NuvqQ5mYclTlk6mEhc4mQHktU9v%2BR2Owg%3D%3D; alimail_sso_device_id=ea5b8c839b964ad598707c0d1cd55fdb; alimail_sso_td=ODJiNDA0OWZjNTQzNDMxOThjNTcwYTE2MTZhNTcyYTY=; arms_uid=32995caa-2699-445b-bc01-0f32e3e64c1f; alimail_device_id=0bf72238-6435-4e9f-9662-a352eb12f6ef; alimail_device_id_type=UUID; alimail_core_session_key=QXltU2Vzc2lvbi0xMjY2MjMtUHRXZmRud2pRZzZWZ08wWXd0RkVmMlhST091SUdCU2Yycm15S2MzeWhsY0pzajNlNHY; alimail_auth_mode=core; alimail_session_version_key=0.2.9; _csrf_token_=QXltVG9rZW4tNzc2ODg4Ny1KWEFNalpmMHM2cGwxeGNoUkg1akFVTnlybnYxc0RUOWVMakxoa3dTamJXNXFZMHZZSw; alimail_auth_session_key=QXltU2Vzc2lvbi0xMjY2MjQtSmNRQktrZ2dWcVpZSjdvWnVtQ3pZeFZFb3ZncEh3NTNLenowR0d3Wkp3YVJIWmF1N2Y; alimail_init_lang=zh_CN; at=alex.ma@hatchtec.com4QB6C1747185750011; alimail_session_template_key=v5-1; udtoken=\"alex.ma@hatchtec.com:9f9bf8ac977d72df61fd3bf28c2b1d6f:6555671748069417839314\"; core_heart_beat=1748069538085",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/inbox/all/eyJpZCI6IjJfMDpEenp6enlNOVJ2QSQtLS0uYnJ6NGlpYiIsInR5cGUiOiJtYWlsIiwiaXNEcmFmdE1haWwiOmZhbHNlfQ",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "mails=%5B%222_0%3ADzzzzyM9RvA%24---.brz4iib%22%5D&tagAdd=%5B%22106%22%5D&tagRemove=%5B%5D&tagCount=0&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tNzc2ODg4Ny1KWEFNalpmMHM2cGwxeGNoUkg1akFVTnlybnYxc0RUOWVMakxoa3dTamJXNXFZMHZZSw",
+  "method": "POST"
+});
+
+response:
+{"cost":111,"email":"alex.ma@hatchtec.com","fingerPrint":"958041199MQUP","log":"","msg":"修改标签成功","status":0,"version":"0.2.9"}
