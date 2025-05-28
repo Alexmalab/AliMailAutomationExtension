@@ -137,16 +137,17 @@ function addKeywordInput(container, value = '', logic = 'or', isLast = true) {
     input.placeholder = '关键字';
     input.value = value;
     input.disabled = !getConditionToggleState(container);
-    
-    // 逻辑连接符下拉框（除了最后一个关键字）
+
+    // Create logic selector element if needed, but defer appending
+    let logicSelectElement = null;
     if (!isLast) {
-        const logicSelect = document.createElement('select');
-        logicSelect.disabled = !getConditionToggleState(container);
-        logicSelect.innerHTML = '<option value="or">或</option><option value="and">且</option>';
-        logicSelect.value = logic;
-        div.appendChild(logicSelect);
+        logicSelectElement = document.createElement('select');
+        logicSelectElement.disabled = !getConditionToggleState(container);
+        logicSelectElement.innerHTML = '<option value="or">或</option><option value="and">且</option>';
+        logicSelectElement.value = logic;
+        // Original div.appendChild(logicSelect) is removed from here
     }
-    
+
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.textContent = '×';
@@ -161,15 +162,14 @@ function addKeywordInput(container, value = '', logic = 'or', isLast = true) {
         // 重新调整最后一个关键字的逻辑连接符显示
         updateLastKeywordItem(container);
     });
-    
+
+    // Append elements in the correct order: input, then logic selector (if it exists), then remove button
     div.appendChild(input);
+    if (logicSelectElement) {
+        div.appendChild(logicSelectElement);
+    }
     div.appendChild(removeBtn);
     container.appendChild(div);
-    
-    // 如果不是最后一个，需要更新之前最后一个的逻辑连接符
-    if (!isLast) {
-        updateLastKeywordItem(container);
-    }
 }
 
 function updateLastKeywordItem(container) {
@@ -206,6 +206,8 @@ function addKeywordGroup(container) {
         addBtn.remove();
         // 添加新的关键字输入框（不是最后一个）
         addKeywordInput(container, '', 'or', false);
+        // 更新所有关键字项的连接符显示
+        updateLastKeywordItem(container);
         // 重新添加添加按钮
         addKeywordGroup(container);
     });
@@ -354,6 +356,80 @@ document.querySelectorAll('input[name="actionType"]').forEach(radio => {
 });
 
 // ===============================================
+// 直接存储操作函数 - 替代 Background Script 消息传递
+// ===============================================
+
+/**
+ * 直接保存规则到存储
+ */
+async function saveRuleToStorage(rule) {
+    try {
+        // 获取现有规则
+        const result = await chrome.storage.local.get('aliMailRules');
+        let rules = result.aliMailRules || [];
+        
+        // 查找是否已存在
+        const index = rules.findIndex(r => r.id === rule.id);
+        if (index !== -1) {
+            rules[index] = rule; // 更新
+        } else {
+            rule.id = Date.now().toString(); // 生成新ID
+            rules.push(rule); // 添加
+        }
+        
+        // 保存回存储
+        await chrome.storage.local.set({ aliMailRules: rules });
+        console.log('[Options]: 规则已保存到存储:', rule);
+        return { success: true };
+    } catch (error) {
+        console.error('[Options]: 保存规则失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 直接从存储删除规则
+ */
+async function deleteRuleFromStorage(ruleId) {
+    try {
+        const result = await chrome.storage.local.get('aliMailRules');
+        let rules = result.aliMailRules || [];
+        
+        rules = rules.filter(r => r.id !== ruleId);
+        
+        await chrome.storage.local.set({ aliMailRules: rules });
+        console.log('[Options]: 规则已从存储删除:', ruleId);
+        return { success: true };
+    } catch (error) {
+        console.error('[Options]: 删除规则失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * 直接切换规则状态
+ */
+async function toggleRuleStatusInStorage(ruleId) {
+    try {
+        const result = await chrome.storage.local.get('aliMailRules');
+        let rules = result.aliMailRules || [];
+        
+        const rule = rules.find(r => r.id === ruleId);
+        if (rule) {
+            rule.enabled = !rule.enabled;
+            await chrome.storage.local.set({ aliMailRules: rules });
+            console.log('[Options]: 规则状态已切换:', ruleId, rule.enabled);
+            return { success: true, enabled: rule.enabled };
+        } else {
+            return { success: false, error: '规则不存在' };
+        }
+    } catch (error) {
+        console.error('[Options]: 切换规则状态失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// ===============================================
 // 规则数据处理 (与 Background Script 通信)
 // ===============================================
 
@@ -429,9 +505,9 @@ ruleForm.addEventListener('submit', async (e) => {
         action: action
     };
 
-    // 向 Background Script 发送保存/更新规则的消息
+    // 直接保存规则到存储
     try {
-        const response = await chrome.runtime.sendMessage({ action: "saveRule", rule: rule });
+        const response = await saveRuleToStorage(rule);
         if (response && response.success) {
             alert('规则保存成功！');
             hideModal(ruleModal);
@@ -448,7 +524,9 @@ ruleForm.addEventListener('submit', async (e) => {
 // 渲染规则列表
 async function renderRules() {
     try {
-        const rules = await chrome.runtime.sendMessage({ action: "getRules" });
+        // 直接从存储读取规则
+        const result = await chrome.storage.local.get('aliMailRules');
+        const rules = result.aliMailRules || [];
         rulesListBody.innerHTML = '';
         
         if (!Array.isArray(rules)) {
@@ -489,7 +567,7 @@ async function renderRules() {
             deleteBtn.addEventListener('click', async () => {
                 if (confirm(`确定要删除规则 "${rule.name}" 吗？`)) {
                     try {
-                        const response = await chrome.runtime.sendMessage({ action: "deleteRule", ruleId: rule.id });
+                        const response = await deleteRuleFromStorage(rule.id);
                         if (response && response.success) {
                             alert('规则删除成功！');
                             renderRules();
@@ -510,10 +588,10 @@ async function renderRules() {
             statusToggle.className = `rule-status-toggle ${rule.enabled ? 'enabled' : ''}`;
             statusToggle.addEventListener('click', async () => {
                 try {
-                    const response = await chrome.runtime.sendMessage({ action: "toggleRuleStatus", ruleId: rule.id });
+                    const response = await toggleRuleStatusInStorage(rule.id);
                     if (response && response.success) {
-                        rule.enabled = !rule.enabled; // 更新本地状态
-                        statusToggle.classList.toggle('enabled');
+                        rule.enabled = response.enabled; // 更新本地状态
+                        statusToggle.classList.toggle('enabled', response.enabled);
                     } else {
                         alert('切换规则状态失败: ' + (response?.error || '未知错误'));
                     }
@@ -832,21 +910,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Options页面初始化开始...');
     
     try {
-        // 从 Background Script 获取标签和文件夹数据
-        const response = await chrome.runtime.sendMessage({ action: "getTagsAndFolders" });
-        console.log('获取标签和文件夹数据响应:', response);
+        // 直接从存储读取标签和文件夹数据，不通过 Background Script
+        const storageResult = await chrome.storage.local.get(['aliMailTags', 'aliMailFolders', 'aliMailRules']);
         
-        if (response && response.success) {
-            availableTags = response.tags || {};
-            availableFolders = response.folders || {};
-            console.log('成功获取数据:', { tags: availableTags, folders: availableFolders });
-            populateDropdowns();
-        } else {
-            console.error("无法获取标签和文件夹数据:", response?.error || '未知错误');
-            // 不显示alert，因为可能是首次使用或者还没有打开阿里邮箱页面
+        console.log('从存储直接读取的数据:', storageResult);
+        
+        // 获取标签和文件夹数据
+        availableTags = storageResult.aliMailTags || {};
+        availableFolders = storageResult.aliMailFolders || {};
+        
+        console.log('成功获取数据:', { tags: availableTags, folders: availableFolders });
+        
+        if (Object.keys(availableTags).length === 0 && Object.keys(availableFolders).length === 0) {
             console.warn("提示：请确保阿里邮箱页面已打开并登录，然后刷新此页面。");
         }
+        
+        populateDropdowns();
 
+        // 直接从存储读取规则数据
+        const rules = storageResult.aliMailRules || [];
+        console.log('从存储读取的规则:', rules);
+        
         // 渲染规则列表
         await renderRules();
         console.log('Options页面初始化完成');

@@ -27,7 +27,7 @@
     "options_page": "options.html",
     "web_accessible_resources": [
       {
-        "resources": [ "icons/*.png" ],
+        "resources": [ "icons/*.png", "inject.js" ],
         "matches": [ "<all_urls>" ]
       }
     ]
