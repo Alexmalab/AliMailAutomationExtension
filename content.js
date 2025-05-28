@@ -146,24 +146,28 @@ function setupEventListeners() {
     });
     
     window.addEventListener('alimail_new_mail_id_detected', (event) => {
-        const { mailId } = event.detail;
-        console.log(`[Content Script]: 收到新邮件ID事件 - ID: ${mailId}`);
+        const { mailId, sender } = event.detail;
+        console.log(`[Content Script]: 收到新邮件ID事件 - ID: ${mailId}, Sender: ${sender}`);
         
         chrome.runtime.sendMessage({
             action: "newMailIdDetected",
-            mailId: mailId
+            mailId: mailId,
+            sender: sender
         });
     });
     
     window.addEventListener('alimail_mail_content_fetched', (event) => {
-        const { mailId, body, subject } = event.detail;
-        console.log(`[Content Script]: 收到邮件内容事件 - ID: ${mailId}, 主题: "${subject}"`);
+        const { mailId, body, subject, sender, recipient, ccRecipients } = event.detail;
+        console.log(`[Content Script]: 收到邮件内容事件 - ID: ${mailId}, 主题: "${subject}", Sender: ${sender}, Recipient: ${recipient}, CC Recipients: ${ccRecipients}`);
         
         chrome.runtime.sendMessage({
             action: "mailContentFetched",
             mailId: mailId,
             body: body,
-            subject: subject
+            subject: subject,
+            sender: sender,
+            recipient: recipient,
+            ccRecipients: ccRecipients
         });
     });
     
@@ -209,10 +213,24 @@ async function fetchMailBodyFromBackground(mailId) {
             mailId: mailId,
             full: 1 
         });
-        return { success: true, mailId: mailId, data: result }; // 返回成功结果
+        const mailData = result.data || {};
+        const sender = mailData.senderName || mailData.senderAddress || mailData.from;
+        const recipient = mailData.receiverName || mailData.receiverAddress || mailData.to;
+        const ccRecipients = mailData.ccList || mailData.cc;
+
+        return { 
+            success: true, 
+            mailId: mailId, 
+            data: result,
+            subject: mailData.subject || mailData.encSubject,
+            body: mailData.htmlBody || mailData.textBody,
+            sender: sender,
+            recipient: recipient,
+            ccRecipients: ccRecipients
+        };
     } catch (e) {
         console.error(`[Content Script]: 请求邮件 ${mailId} 正文失败:`, e); 
-        return { success: false, mailId: mailId, error: e.message }; // 返回失败结果
+        return { success: false, mailId: mailId, error: e.message };
     }
 }
 

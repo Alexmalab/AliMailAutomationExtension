@@ -20,6 +20,24 @@ const subjectConditionType = document.getElementById('subjectConditionType');
 const subjectKeywordsContainer = document.getElementById('subjectKeywordsContainer');
 const subjectCaseSensitiveCheckbox = document.getElementById('subjectCaseSensitive');
 
+// 发件人条件元素
+const senderConditionToggle = document.getElementById('senderConditionToggle');
+const senderConditionType = document.getElementById('senderConditionType');
+const senderAddressInput = document.getElementById('senderAddress');
+const senderCaseSensitiveCheckbox = document.getElementById('senderCaseSensitive');
+
+// 收件人条件元素
+const recipientConditionToggle = document.getElementById('recipientConditionToggle');
+const recipientConditionType = document.getElementById('recipientConditionType');
+const recipientAddressInput = document.getElementById('recipientAddress');
+const recipientCaseSensitiveCheckbox = document.getElementById('recipientCaseSensitive');
+
+// 抄送条件元素
+const ccConditionToggle = document.getElementById('ccConditionToggle');
+const ccConditionType = document.getElementById('ccConditionType');
+const ccAddressInput = document.getElementById('ccAddress');
+const ccCaseSensitiveCheckbox = document.getElementById('ccCaseSensitive');
+
 // 正文条件元素
 const bodyConditionToggle = document.getElementById('bodyConditionToggle');
 const bodyConditionType = document.getElementById('bodyConditionType');
@@ -67,6 +85,21 @@ function clearForm() {
     clearKeywordsContainer(subjectKeywordsContainer);
     populateKeywordsContainer(subjectKeywordsContainer, []); // 使用新的方法初始化
 
+    // 重置发件人条件相关
+    senderConditionToggle.checked = false;
+    toggleConditionFields('sender', false);
+    senderAddressInput.value = '';
+
+    // 重置收件人条件相关
+    recipientConditionToggle.checked = false;
+    toggleConditionFields('recipient', false);
+    recipientAddressInput.value = '';
+
+    // 重置抄送条件相关
+    ccConditionToggle.checked = false;
+    toggleConditionFields('cc', false);
+    ccAddressInput.value = '';
+
     // 重置正文条件相关
     bodyConditionToggle.checked = false;
     toggleConditionFields('body', false);
@@ -113,6 +146,18 @@ function toggleConditionFields(conditionType, enabled) {
         if (enabled && bodyKeywordsContainer.children.length === 0) {
             addKeywordInput(bodyKeywordsContainer, '', 'or', true);
         }
+    } else if (conditionType === 'sender') {
+        senderConditionType.disabled = !enabled;
+        senderAddressInput.disabled = !enabled;
+        senderCaseSensitiveCheckbox.disabled = !enabled;
+    } else if (conditionType === 'recipient') {
+        recipientConditionType.disabled = !enabled;
+        recipientAddressInput.disabled = !enabled;
+        recipientCaseSensitiveCheckbox.disabled = !enabled;
+    } else if (conditionType === 'cc') {
+        ccConditionType.disabled = !enabled;
+        ccAddressInput.disabled = !enabled;
+        ccCaseSensitiveCheckbox.disabled = !enabled;
     }
 }
 
@@ -219,6 +264,12 @@ function getConditionToggleState(container) {
         return bodyConditionToggle.checked;
     } else if (container === subjectKeywordsContainer) {
         return subjectConditionToggle.checked;
+    } else if (container === senderAddressInput) { // Assuming senderAddressInput is unique enough
+        return senderConditionToggle.checked;
+    } else if (container === recipientAddressInput) { // Assuming recipientAddressInput is unique enough
+        return recipientConditionToggle.checked;
+    } else if (container === ccAddressInput) { 
+        return ccConditionToggle.checked;
     }
     return false;
 }
@@ -313,6 +364,18 @@ window.addEventListener('click', (event) => {
 // 规则启用/禁用切换
 subjectConditionToggle.addEventListener('change', (e) => {
     toggleConditionFields('subject', e.target.checked);
+});
+
+senderConditionToggle.addEventListener('change', (e) => {
+    toggleConditionFields('sender', e.target.checked);
+});
+
+recipientConditionToggle.addEventListener('change', (e) => {
+    toggleConditionFields('recipient', e.target.checked);
+});
+
+ccConditionToggle.addEventListener('change', (e) => {
+    toggleConditionFields('cc', e.target.checked);
 });
 
 bodyConditionToggle.addEventListener('change', (e) => {
@@ -460,6 +523,54 @@ ruleForm.addEventListener('submit', async (e) => {
         subjectCondition.enabled = false;
     }
 
+    // 收集发件人条件
+    const senderCondition = {};
+    if (senderConditionToggle.checked) {
+        senderCondition.enabled = true;
+        senderCondition.type = senderConditionType.value;
+        senderCondition.address = senderAddressInput.value;
+        senderCondition.caseSensitive = senderCaseSensitiveCheckbox.checked;
+
+        if (!senderCondition.address) {
+            alert('请输入发件人地址！');
+            return;
+        }
+    } else {
+        senderCondition.enabled = false;
+    }
+
+    // 收集收件人条件
+    const recipientCondition = {};
+    if (recipientConditionToggle.checked) {
+        recipientCondition.enabled = true;
+        recipientCondition.type = recipientConditionType.value;
+        recipientCondition.address = recipientAddressInput.value;
+        recipientCondition.caseSensitive = recipientCaseSensitiveCheckbox.checked;
+
+        if (!recipientCondition.address) {
+            alert('请输入收件人地址！');
+            return;
+        }
+    } else {
+        recipientCondition.enabled = false;
+    }
+
+    // 收集抄送条件
+    const ccCondition = {};
+    if (ccConditionToggle.checked) {
+        ccCondition.enabled = true;
+        ccCondition.type = ccConditionType.value;
+        ccCondition.address = ccAddressInput.value.trim();
+        ccCondition.caseSensitive = ccCaseSensitiveCheckbox.checked;
+
+        if (!ccCondition.address) {
+            alert('请输入抄送地址！');
+            return;
+        }
+    } else {
+        ccCondition.enabled = false;
+    }
+
     // 收集正文条件
     const bodyCondition = {};
     if (bodyConditionToggle.checked) {
@@ -500,6 +611,9 @@ ruleForm.addEventListener('submit', async (e) => {
         enabled: ruleEnabled,
         conditions: {
             subject: subjectCondition,
+            sender: senderCondition,
+            recipient: recipientCondition,
+            cc: ccCondition,
             body: bodyCondition,
         },
         action: action
@@ -679,6 +793,45 @@ function editRule(rule) {
         populateKeywordsContainer(subjectKeywordsContainer, []); // 默认添加一个空输入框
     }
 
+    // 填充发件人条件
+    if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
+        senderConditionToggle.checked = true;
+        toggleConditionFields('sender', true);
+        senderConditionType.value = rule.conditions.sender.type || 'include';
+        senderAddressInput.value = rule.conditions.sender.address || '';
+        senderCaseSensitiveCheckbox.checked = rule.conditions.sender.caseSensitive || false;
+    } else {
+        senderConditionToggle.checked = false;
+        toggleConditionFields('sender', false);
+        senderAddressInput.value = '';
+    }
+
+    // 填充收件人条件
+    if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
+        recipientConditionToggle.checked = true;
+        toggleConditionFields('recipient', true);
+        recipientConditionType.value = rule.conditions.recipient.type || 'include';
+        recipientAddressInput.value = rule.conditions.recipient.address || '';
+        recipientCaseSensitiveCheckbox.checked = rule.conditions.recipient.caseSensitive || false;
+    } else {
+        recipientConditionToggle.checked = false;
+        toggleConditionFields('recipient', false);
+        recipientAddressInput.value = '';
+    }
+
+    // 填充抄送条件
+    if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
+        ccConditionToggle.checked = true;
+        toggleConditionFields('cc', true);
+        ccConditionType.value = rule.conditions.cc.type || 'include';
+        ccAddressInput.value = rule.conditions.cc.address || '';
+        ccCaseSensitiveCheckbox.checked = rule.conditions.cc.caseSensitive || false;
+    } else {
+        ccConditionToggle.checked = false;
+        toggleConditionFields('cc', false);
+        ccAddressInput.value = '';
+    }
+
     // 填充正文条件
     if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
         bodyConditionToggle.checked = true;
@@ -742,6 +895,18 @@ function showRuleDetail(rule) {
         }
         
         detailConditions.innerHTML += `<p><strong>主题:</strong> ${rule.conditions.subject.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.subject.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+    }
+
+    if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
+        detailConditions.innerHTML += `<p><strong>发件人:</strong> ${rule.conditions.sender.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.sender.address}${rule.conditions.sender.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+    }
+
+    if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
+        detailConditions.innerHTML += `<p><strong>收件人:</strong> ${rule.conditions.recipient.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.recipient.address}${rule.conditions.recipient.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+    }
+
+    if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
+        detailConditions.innerHTML += `<p><strong>抄送:</strong> ${rule.conditions.cc.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.cc.address}${rule.conditions.cc.caseSensitive ? ' (区分大小写)' : ''}</p>`;
     }
 
     if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {

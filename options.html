@@ -498,31 +498,55 @@
                 <!-- 发件人地址条件 -->
                 <div class="condition-group">
                     <div class="condition-header">
-                        <input type="checkbox" id="senderConditionToggle" disabled>
+                        <input type="checkbox" id="senderConditionToggle">
                         <label>发件人地址</label>
                     </div>
                     <div class="condition-content">
-                        <select disabled><option>包含联系人</option></select>
-                        <input type="text" disabled placeholder="输入发件人地址">
+                        <select id="senderConditionType" disabled>
+                            <option value="include">包含</option>
+                            <option value="exclude">不包含</option>
+                        </select>
+                        <input type="text" id="senderAddress" disabled placeholder="输入发件人地址/昵称">
+                        <label><input type="checkbox" id="senderCaseSensitive" disabled> 区分大小写</label>
                     </div>
                 </div>
 
                 <!-- 收件人地址条件 -->
                 <div class="condition-group">
                     <div class="condition-header">
-                        <input type="checkbox" id="recipientConditionToggle" disabled>
+                        <input type="checkbox" id="recipientConditionToggle">
                         <label>收件人地址</label>
                     </div>
                     <div class="condition-content">
-                        <select disabled><option>包含联系人</option></select>
-                        <input type="text" disabled placeholder="输入收件人地址">
+                        <select id="recipientConditionType" disabled>
+                            <option value="include">包含</option>
+                            <option value="exclude">不包含</option>
+                        </select>
+                        <input type="text" id="recipientAddress" disabled placeholder="输入收件人地址/昵称">
+                        <label><input type="checkbox" id="recipientCaseSensitive" disabled> 区分大小写</label>
+                    </div>
+                </div>
+
+                <!-- 抄送地址条件 -->
+                <div class="condition-group">
+                    <div class="condition-header">
+                        <input type="checkbox" id="ccConditionToggle">
+                        <label>抄送地址</label>
+                    </div>
+                    <div class="condition-content">
+                        <select id="ccConditionType" disabled>
+                            <option value="include">包含</option>
+                            <option value="exclude">不包含</option>
+                        </select>
+                        <input type="text" id="ccAddress" disabled placeholder="输入抄送地址/昵称">
+                        <label><input type="checkbox" id="ccCaseSensitive" disabled> 区分大小写</label>
                     </div>
                 </div>
 
                 <!-- 主题条件 -->
                 <div class="condition-group">
                     <div class="condition-header">
-                        <input type="checkbox" id="subjectConditionToggle" disabled>
+                        <input type="checkbox" id="subjectConditionToggle">
                         <label>主题</label>
                     </div>
                     <div class="condition-content">

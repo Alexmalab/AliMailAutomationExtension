@@ -67,9 +67,24 @@
                                 // 立即通知每个新邮件ID，不等待queryMailList劫持
                                 for (const mailId of pendingNewMailIds) {
                                     console.log(`[页面环境]: 发送新邮件ID通知: ${mailId}`);
+                                    // Try to find sender info from the newMails array if possible.
+                                    // This depends on the structure of responseData.mailIncrements.newStableIds[folderId]
+                                    let senderName = null;
+                                    for (const folderId in responseData.mailIncrements.newStableIds) {
+                                        const newMailsInFolder = responseData.mailIncrements.newStableIds[folderId];
+                                        if (Array.isArray(newMailsInFolder)) {
+                                            const mailData = newMailsInFolder.find(m => m.mailId === mailId);
+                                            if (mailData) {
+                                                senderName = mailData.senderName || mailData.from; // Adjust based on actual field name
+                                                break;
+                                            }
+                                        }
+                                    }
+
                                     window.dispatchEvent(new CustomEvent('alimail_new_mail_id_detected', {
                                         detail: {
-                                            mailId: mailId
+                                            mailId: mailId,
+                                            sender: senderName // May be null
                                         }
                                     }));
                                 }
@@ -82,7 +97,10 @@
                         else if (url.includes('alimail/ajax/mail/queryMailList.txt')) {
                             const responseData = JSON.parse(this.responseText);
                             // console.log('[页面环境]: queryMailList 响应:', responseData);
-                            // 不再处理待处理邮件ID，因为我们已经主动通知了
+                            // If this response is useful for extracting sender/subject for *new* mails,
+                            // we could dispatch events here too. However, getTimerRefreshData is more targeted for new mail.
+                            // For now, if a mailId was previously detected and we need its subject/sender,
+                            // background.js will initiate a specific queryMailList or fetchMailBody.
                         }
                         // 3. 捕获标签和文件夹数据 (getMailNavData.txt)
                         else if (url.includes('alimail/ajax/navigate/getMailNavData.txt')) {
