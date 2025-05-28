@@ -1,0 +1,22 @@
+fetch("https://qiye.aliyun.com/alimail/ajax/mms/queryMimeItems.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "..."",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/inbox/all",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "storageOwner=alex.ma%40hatchtec.com&storageType=alimail_mt_calendar&offset=0&length=1&query=%7B%22checkNotification%22%3Atrue%7D&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tNzc2ODg4Ny1KWEFNalpmMHM2cGwxeGNoUkg1akFVTnlybnYxc0RUOWVMakxoa3dTamJXNXFZMHZZSw",
+  "method": "POST"
+});
+
+response:
+  {"nextCursor":"","cost":69,"log":"","version":"0.2.9","displayQueryTime":"0.07","total":0,"fragment":0,"dataList":[],"incrementId":0,"fingerPrint":"710870EEARZXE","email":"alex.ma@hatchtec.com","status":0}
+  

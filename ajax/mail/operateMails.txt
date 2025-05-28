@@ -1,0 +1,72 @@
+// 示例为 移动指定mailId的邮件到指定folder的操作；尚未测试此接口是否有其他作用
+fetch("https://qiye.aliyun.com/alimail/ajax/mail/operateMails.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "...",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/inbox/all/eyJpZCI6IjJfMDpEenp6enlNOVJ2QSQtLS0uYnJ6NGlpYiIsInR5cGUiOiJtYWlsIiwiaXNEcmFmdE1haWwiOmZhbHNlfQ",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "mails=%5B%222_0%3ADzzzzyM9RvA%24---.brz4iib%22%5D&folderCount=1&tagCount=0&op=move&argument=102&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tNzc2ODg4Ny1KWEFNalpmMHM2cGwxeGNoUkg1akFVTnlybnYxc0RUOWVMakxoa3dTamJXNXFZMHZZSw",
+  "method": "POST"
+});
+
+response:
+
+{"cost":145,"email":"alex.ma@hatchtec.com","extend":{"mailNav":{"cost":145,"email":"alex.ma@hatchtec.com","fingerPrint":"9681956B1KZTV","folders":[{"encName":"sentitems","id":"1","name":"sentitems","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"1","total":47,"unread":0},{"encName":"inbox","id":"2","name":"inbox","notify":true,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"2","total":228,"unread":3},{"encName":"spam","id":"3","name":"spam","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"3","total":11,"unread":5},{"encName":"draft","id":"5","name":"draft","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"5","total":1,"unread":0},{"encName":"deleted","id":"6","name":"deleted","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"6","total":36,"unread":0},{"encName":"HMSTOOL","id":"101","name":"HMSTOOL","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"101","total":326,"unread":25},{"encName":"广告营销","id":"102","name":"广告营销","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"102","total":1,"unread":0}],"log":"","status":0,"version":"0.2.9"}},"fingerPrint":"9681956B1KZTV","log":"","msg":"移动邮件成功","status":0,"version":"0.2.9"}
+
+// 示例为 删除邮件（移动到已删除文件夹）的操作；
+
+fetch("https://qiye.aliyun.com/alimail/ajax/mail/operateMails.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "...",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/folder-102/all",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "mails=%5B%22102_0%3ADzzzzyLmJQ0%24---.d1qtxQD%22%5D&folderCount=1&tagCount=0&op=delete&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tMTk2MDQ2MzEtVWJQc1lXQWk2OXFRbmxZa1pCeldUcGpOR3JFckh3NXJNUklhWHFsNmQ0UEpLZFZIamQ",
+  "method": "POST"
+});
+
+response:
+
+{"cost":135,"email":"alex.ma@hatchtec.com","extend":{"mailNav":{"cost":135,"email":"alex.ma@hatchtec.com","fingerPrint":"471278737WXLJ","folders":[{"encName":"sentitems","id":"1","name":"sentitems","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"1","total":47,"unread":0},{"encName":"inbox","id":"2","name":"inbox","notify":true,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"2","total":243,"unread":10},{"encName":"spam","id":"3","name":"spam","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"3","total":11,"unread":5},{"encName":"draft","id":"5","name":"draft","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"5","total":1,"unread":0},{"encName":"deleted","id":"6","name":"deleted","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"6","total":37,"unread":1},{"encName":"HMSTOOL","id":"101","name":"HMSTOOL","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"101","total":327,"unread":25},{"encName":"广告营销","id":"102","name":"广告营销","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"102","total":12,"unread":8},{"encName":"测试新建文件夹","id":"104","name":"测试新建文件夹","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"104","total":0,"unread":0}],"log":"","status":0,"version":"0.2.9"}},"fingerPrint":"471278737WXLJ","log":"","msg":"删除邮件成功","status":0,"version":"0.2.9"}
+
+// 示例为 彻底删除的操作；
+fetch("https://qiye.aliyun.com/alimail/ajax/mail/operateMails.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "...",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/deleted/all",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "mails=%5B%226_0%3ADzzzzyLmJQ0%24---.d1qtxQD%22%5D&folderCount=1&tagCount=0&op=delete_permanent&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tMTk2MDQ2MzEtVWJQc1lXQWk2OXFRbmxZa1pCeldUcGpOR3JFckh3NXJNUklhWHFsNmQ0UEpLZFZIamQ",
+  "method": "POST"
+});
+
+response:
+
+{"cost":616,"email":"alex.ma@hatchtec.com","extend":{"mailNav":{"cost":616,"email":"alex.ma@hatchtec.com","fingerPrint":"488510A08WKHK","folders":[{"encName":"sentitems","id":"1","name":"sentitems","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"1","total":47,"unread":0},{"encName":"inbox","id":"2","name":"inbox","notify":true,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"2","total":243,"unread":10},{"encName":"spam","id":"3","name":"spam","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"3","total":11,"unread":5},{"encName":"draft","id":"5","name":"draft","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"5","total":1,"unread":0},{"encName":"deleted","id":"6","name":"deleted","notify":false,"orderType":"1","parentId":"","pop":false,"system":true,"topParentId":"6","total":36,"unread":0},{"encName":"HMSTOOL","id":"101","name":"HMSTOOL","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"101","total":327,"unread":25},{"encName":"广告营销","id":"102","name":"广告营销","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"102","total":12,"unread":8},{"encName":"测试新建文件夹","id":"104","name":"测试新建文件夹","notify":true,"orderType":"1","parentId":"","pop":false,"system":false,"topParentId":"104","total":0,"unread":0}],"log":"","status":0,"version":"0.2.9"}},"fingerPrint":"488510A08WKHK","log":"","msg":"彻底删除邮件成功","status":0,"version":"0.2.9"}

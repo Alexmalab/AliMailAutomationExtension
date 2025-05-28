@@ -1,0 +1,21 @@
+fetch("https://qiye.aliyun.com/alimail/ajax/mail/changeTags.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "...",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/inbox/all/eyJpZCI6IjJfMDpEenp6enlNOVJ2QSQtLS0uYnJ6NGlpYiIsInR5cGUiOiJtYWlsIiwiaXNEcmFmdE1haWwiOmZhbHNlfQ",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "mails=%5B%222_0%3ADzzzzyM9RvA%24---.brz4iib%22%5D&tagAdd=%5B%22106%22%5D&tagRemove=%5B%5D&tagCount=0&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tNzc2ODg4Ny1KWEFNalpmMHM2cGwxeGNoUkg1akFVTnlybnYxc0RUOWVMakxoa3dTamJXNXFZMHZZSw",
+  "method": "POST"
+});
+
+response:
+{"cost":111,"email":"alex.ma@hatchtec.com","fingerPrint":"958041199MQUP","log":"","msg":"修改标签成功","status":0,"version":"0.2.9"}

@@ -1,0 +1,28 @@
+//阿里邮箱的刷新机制，用于检测是否有新的邮件
+
+fetch("https://qiye.aliyun.com/alimail/ajax/navigate/getTimerRefreshData.txt", {
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "en,zh-CN;q=0.9,zh;q=0.8",
+    "content-type": "application/x-www-form-urlencoded",
+    "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"Windows\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "cookie": "...",
+    "Referer": "https://qiye.aliyun.com/alimail/entries/v5.1/mail/inbox/all/eyJpZCI6IjJfMDpEenp6enlMbmJ3dCQtLS0uY3pmLVlPTiIsInR5cGUiOiJtYWlsIiwiaXNEcmFmdE1haWwiOmZhbHNlfQ",
+    "Referrer-Policy": "no-referrer-when-downgrade"
+  },
+  "body": "sessionMode=0&forceRefreshIncrement=1&incrementId=3777&statusIncrementId=354&calendarIncrementId=2&_tpl_=v5ForWebDing&_refer_hash_=&_root_token_=&_csrf_token_=QXltVG9rZW4tMTM4NjQzMjktYUJzZWVBc2I2aWIycldkOXJhQkpFaldMeWszb05wYVFMN2RRcjdlSkl1aWFuczFsUE0",
+  "method": "POST"
+});
+
+// response with new emails:
+
+{"calendarIncrements":{"force":false,"maxIncrementId":2},"checkIncrement":false,"cost":238,"doCalendarNotify":false,"doNewVersionNotify":false,"doTodoNotify":false,"doVersionUpdateNotify":false,"email":"alex.ma@hatchtec.com","fingerPrint":"20062E29CWFNI","log":"","mailIncrements":{"affectedFolders":[{"encName":"inbox","id":"2","name":"inbox","notify":true,"orderType":"1","parentId":"","pop":false,"system":true,"total":230,"unread":4}],"affectedGroupTagIds":[],"affectedSessionIds":["DzzzzyLmi-v---.d0BUk1Z"],"affectedStackCovers":[],"affectedTags":[],"force":false,"mailNotifyEnabled":true,"maxIncrementId":3778,"newMailNotifyCount":1,"newMailNotifyData":{"clientExtraInfo":{"summary":"do not reply, this is a test eamil"},"encSubject":"this is a TEST email","encSummary":"do not reply, this is a test eamil","folderId":"2","from":{"clientExtraInfo":{},"displayEmail":"alexandrmarr@gmail.com","displayName":"Alexandre Marr","email":"alexandrmarr@gmail.com","encDisplayEmail":"alexandrmarr@gmail.com","encDisplayName":"Alexandre Marr","name":"Alexandre Marr"},"id":"DzzzzyLmi-v$---.d0QL.S5","mailId":"2_0:DzzzzyLmi-v$---.d0QL.S5","messageId":"CAMGr2fQQ5+BfRagfMdgZOKBP4xMQ0+Ku9fgaTPnq3LU9OfuRvA@mail.gmail.com","owner":"alex.ma@hatchtec.com","sameCluster":true,"saveToSendFolder":true,"separatedSend":false,"sessionId":"DzzzzyLmi-v---.d0BUk1Z","status":4,"subject":"this is a TEST email","tagList":["9"],"timestamp":1748312004000,"to":[{"avatarAddr":"#6f68e5","clientExtraInfo":{},"departmentId":"-----S----.LPXM0S:2:----.LrROoq","displayEmail":"alex.ma@hatchtec.com","displayName":"Alex Ma","email":"alex.ma@hatchtec.com","encDisplayEmail":"alex.ma@hatchtec.com","encDisplayName":"Alex Ma","name":"Alex Ma","nickName":"","type":"1"}]},"newStableIds":{"2":[{"id":"DzzzzyLmi-v$---.d0QL.S5","mailId":"2_0:DzzzzyLmi-v$---.d0QL.S5","sessionId":"DzzzzyLmi-v---.d0BUk1Z"}]},"refreshFolders":false,"refreshSignatures":false,"refreshTags":false},"newApiGatewayAccessToken":"UNIFY:e5592ff3-d854-4cc1-afd0-96b04c89372f|40675438-aeea-4448-a842-5d02b709ba41","newApiGatewayAccessTokenExpiration":1748313806443,"nextRefreshTime":27000,"serverDateDescObj":{"encLunarAnimalTitle":"蛇","encLunarDayTitle":"初一","encLunarGanZhiTitle":"乙巳","encLunarMonthTitle":"五月","encLunarTitle":"乙巳蛇年　五月初一","encSolarTitle":"2025年5月27日(星期二)","lunarAnimalTitle":"蛇","lunarDayTitle":"初一","lunarGanZhiTitle":"乙巳","lunarMonthTitle":"五月","lunarTitle":"乙巳蛇年　五月初一","solarTitle":"2025年5月27日(星期二)"},"serverDateTimeObj":{"d":27,"hr":10,"m":5,"min":13,"sec":26,"y":2025},"serverTimeClassifications":[1767196800000,1748707200000,1749312000000,1748707200000,1748448000000,1748361600000,1748275200000,1748188800000,1748102400000,1747497600000,1746028800000,1735660800000],"serverTimestamp":1748312006239,"status":0,"statusIncrements":{"force":false,"maxIncrementId":354,"updatedItemIds":[]},"version":"0.2.9"}
+
+// response without new emails:
+
+{"calendarIncrements":{"force":false,"maxIncrementId":2},"checkIncrement":false,"cost":102,"doCalendarNotify":false,"doNewVersionNotify":false,"doTodoNotify":false,"doVersionUpdateNotify":false,"email":"alex.ma@hatchtec.com","fingerPrint":"200300F03YXLQ","log":"","mailIncrements":{"force":false,"mailNotifyEnabled":true,"maxIncrementId":3777,"newMailNotifyCount":0,"refreshFolders":false,"refreshSignatures":false,"refreshTags":false},"mailboxQuota":{"totalStorage":10995116277760,"usedStorage":92445536},"newApiGatewayAccessToken":"UNIFY:e5592ff3-d854-4cc1-afd0-96b04c89372f|40675438-aeea-4448-a842-5d02b709ba41","newApiGatewayAccessTokenExpiration":1748313803146,"nextRefreshTime":27000,"serverDateDescObj":{"encLunarAnimalTitle":"蛇","encLunarDayTitle":"初一","encLunarGanZhiTitle":"乙巳","encLunarMonthTitle":"五月","encLunarTitle":"乙巳蛇年　五月初一","encSolarTitle":"2025年5月27日(星期二)","lunarAnimalTitle":"蛇","lunarDayTitle":"初一","lunarGanZhiTitle":"乙巳","lunarMonthTitle":"五月","lunarTitle":"乙巳蛇年　五月初一","solarTitle":"2025年5月27日(星期二)"},"serverDateTimeObj":{"d":27,"hr":10,"m":5,"min":13,"sec":23,"y":2025},"serverTimeClassifications":[1767196800000,1748707200000,1749312000000,1748707200000,1748448000000,1748361600000,1748275200000,1748188800000,1748102400000,1747497600000,1746028800000,1735660800000],"serverTimestamp":1748312003069,"status":0,"statusIncrements":{"force":false,"maxIncrementId":354,"updatedItemIds":[]},"version":"0.2.9"}
