@@ -51,6 +51,7 @@ const moveToFolderAction = document.getElementById('moveToFolderAction');
 const folderSelect = document.getElementById('folderSelect');
 const setLabelAction = document.getElementById('setLabelAction');
 const markReadAction = document.getElementById('markReadAction');
+const stopProcessingAction = document.getElementById('stopProcessingAction');
 
 // 标签选择相关元素
 const tagSelect = document.getElementById('tagSelect');
@@ -119,6 +120,9 @@ function clearForm() {
     // 重置标签选择
     tagSelect.classList.add('disabled');
     clearTags();
+
+    // 重置停止处理其他规则选项
+    stopProcessingAction.checked = true; // 默认勾选
 }
 
 function toggleConditionFields(conditionType, enabled) {
@@ -604,6 +608,7 @@ ruleForm.addEventListener('submit', async (e) => {
         action.setLabel = selectedTagsList;
     }
     action.markAsRead = markReadAction.checked;
+    action.stopProcessing = stopProcessingAction.checked;
 
     const rule = {
         id: ruleId || Date.now().toString(), // 新建时生成ID
@@ -860,6 +865,7 @@ function editRule(rule) {
     if (rule.action) {
         markReadAction.checked = rule.action.markAsRead || false;
     }
+    stopProcessingAction.checked = (rule.action && typeof rule.action.stopProcessing !== 'undefined') ? rule.action.stopProcessing : true; // 默认勾选
 
     showModal(ruleModal);
 }
@@ -942,6 +948,9 @@ function showRuleDetail(rule) {
         }
         if (rule.action.markAsRead) {
             detailActions.innerHTML += '<p><strong>标记为已读:</strong> 是</p>';
+        }
+        if (typeof rule.action.stopProcessing !== 'undefined') {
+            detailActions.innerHTML += `<p><strong>停止处理其他规则:</strong> ${rule.action.stopProcessing ? '是' : '否'}</p>`;
         }
     }
     
