@@ -1,5 +1,7 @@
 // background.js - Chrome Extension Service Worker
 
+importScripts('gemini_api.js'); // Import the Gemini API script
+
 let userRules = []; // 存储用户定义的规则
 const BATCH_SIZE = 50; // Batch size for manual operations
 
@@ -236,6 +238,32 @@ async function runRulesEngine(mailIdInput, bodyContentInput, subjectInput, sende
     }
     console.log(`[Background]: 当前有 ${userRules.length} 条规则`);
     
+    // Load LLM API config once before processing rules
+    let activeLlmConfig = null;
+    try {
+        const storageResult = await chrome.storage.local.get('llmApiConfigs');
+        if (storageResult.llmApiConfigs && storageResult.llmApiConfigs.preferredProvider) {
+            const preferredProvider = storageResult.llmApiConfigs.preferredProvider;
+            if (storageResult.llmApiConfigs.providers && 
+                storageResult.llmApiConfigs.providers[preferredProvider] && 
+                storageResult.llmApiConfigs.providers[preferredProvider].apiKey) {
+                
+                activeLlmConfig = {
+                    provider: preferredProvider,
+                    apiKey: storageResult.llmApiConfigs.providers[preferredProvider].apiKey,
+                    model: storageResult.llmApiConfigs.providers[preferredProvider].model
+                };
+                console.log(`[Background]: Active LLM Config loaded for provider '${preferredProvider}':`, activeLlmConfig.model);
+            } else {
+                console.warn(`[Background]: LLM config for preferred provider '${preferredProvider}' not found or API key missing. AI rules will be skipped.`);
+            }
+        } else {
+            console.warn('[Background]: LLM API Config not found or preferred provider not set. AI rules will be skipped.');
+        }
+    } catch (error) {
+        console.error('[Background]: Error loading LLM API Config:', error);
+    }
+
     for (const rule of userRules) {
         if (!rule.enabled) {
             console.log(`[Background]: 跳过未启用的规则 "${rule.name}"`);
@@ -245,174 +273,237 @@ async function runRulesEngine(mailIdInput, bodyContentInput, subjectInput, sende
         console.log(`[Background]: 检查规则 "${rule.name}" for mail ID ${currentMailId}...`);
         console.log(`[Background]: 规则详情:`, JSON.stringify(rule, null, 2));
 
-        // --- 匹配条件 ---
-        let conditionMet = true;
-        const requiresBody = rule.conditions?.body?.enabled;
-        const requiresRecipientRule = rule.conditions?.recipient?.enabled;
-        const requiresCcRule = rule.conditions?.cc?.enabled;
+        let conditionMet = false; // Initialize to false, explicitly set to true if conditions pass
 
-        // 检查发件人条件
-        if (rule.conditions?.sender?.enabled) {
-            if (!currentSender) {
-                console.warn(`[Background]: 发件人信息缺失，规则 "${rule.name}" 的发件人条件无法评估，若无后续获取则视为不匹配。`);
-                // This situation should be rare if initial fetch logic works.
-                // If sender is critical and missing, conditionMet might become false after fetch attempt.
-            } else {
-                const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
-                console.log(`[Background]: 发件人条件匹配结果: ${senderMatch}`);
-                conditionMet = conditionMet && senderMatch;
-            }
-        }
-        
-        // 检查收件人条件
-        if (rule.conditions?.recipient?.enabled) {
-            if (!currentRecipient) {
-                 console.log(`[Background]: 规则 "${rule.name}" 需要收件人信息，当前缺失。`);
-            } else {
-                const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
-                console.log(`[Background]: 收件人条件匹配结果: ${recipientMatch}`);
-                conditionMet = conditionMet && recipientMatch;
-            }
-        }
+        const ruleConditionMode = rule.conditionMode || 'normal';
 
-        // 检查抄送条件
-        if (rule.conditions?.cc?.enabled) {
-            if (!currentCcRecipients) {
-                 console.log(`[Background]: 规则 "${rule.name}" 需要抄送信息，当前缺失。`);
-            } else {
-                const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
-                console.log(`[Background]: 抄送条件匹配结果: ${ccMatch}`);
-                conditionMet = conditionMet && ccMatch;
-            }
-        }
+        if (ruleConditionMode === 'ai') {
+            if (activeLlmConfig && activeLlmConfig.provider === 'google' && rule.aiPrompt && rule.aiPrompt.user) { // Currently only supporting google
+                console.log(`[Background]: Rule "${rule.name}" is an AI rule. Evaluating with ${activeLlmConfig.provider}...`);
+                // Ensure we have subject and body. For AI rules, body is almost always essential.
+                // Fetch if necessary (similar to existing logic but perhaps more stringent for AI rules)
+                if (!currentBodyContent || !currentSubject) { // AI usually needs both
+                    console.log(`[Background]: AI Rule "${rule.name}" needs subject/body. Fetching full mail details for ${currentMailId}`);
+                    try {
+                        const mailDetails = await chrome.tabs.sendMessage(tabId, {
+                            action: "fetchMailBody",
+                            mailId: currentMailId
+                        });
+                        if (mailDetails && mailDetails.success && mailDetails.data) {
+                            const fullApiData = mailDetails.data.data;
+                            currentBodyContent = currentBodyContent || fullApiData.body || '';
+                            currentSubject = currentSubject || fullApiData.subject || fullApiData.encSubject || '';
+                            // Update sender, recipient, cc as well if they were missing and are now available
+                            if ((!currentSender || typeof currentSender.email === 'undefined') && fullApiData.from) {
+                                if (typeof fullApiData.from === 'object') {
+                                   currentSender = { displayName: fullApiData.from.displayName || '', email: fullApiData.from.email || '' };
+                                } else if (typeof fullApiData.from === 'string') { currentSender = { displayName: fullApiData.from, email: '' };}
+                            }
+                            if (!currentRecipient && fullApiData.to && fullApiData.to.length > 0) { currentRecipient = fullApiData.to.map(r => ({ displayName: r.name, email: r.address })); }
+                            if (!currentCcRecipients && fullApiData.cc && fullApiData.cc.length > 0) { currentCcRecipients = fullApiData.cc.map(r => ({ displayName: r.name, email: r.address })); }
 
-        // 检查主题条件
-        if (rule.conditions?.subject?.enabled) {
-            const subjectMatch = checkCondition(rule.conditions.subject, currentSubject);
-            console.log(`[Background]: 主题条件匹配结果: ${subjectMatch}`);
-            conditionMet = conditionMet && subjectMatch;
-        }
-
-        // 如果目前条件已不满足，则跳过此规则
-        if (!conditionMet) {
-            console.log(`[Background]: 规则 "${rule.name}" 基于头部信息不匹配邮件 ${currentMailId}`);
-            continue;
-        }
-
-        // 如果需要正文、收件人或抄送信息，但当前没有，则获取完整邮件信息
-        // This fetch is for the *current rule's needs*.
-        const needsFurtherDataFetch = (requiresBody && !currentBodyContent) ||
-                                   (requiresRecipientRule && !currentRecipient) ||
-                                   (requiresCcRule && !currentCcRecipients);
-
-        if (needsFurtherDataFetch) {
-            console.log(`[Background]: 规则 "${rule.name}" 需要正文/收件人/抄送信息，请求完整邮件内容 for ${currentMailId}`);
-            try {
-                const mailDetails = await chrome.tabs.sendMessage(tabId, {
-                    action: "fetchMailBody",
-                    mailId: currentMailId // Use currentMailId
-                });
-
-                if (mailDetails && mailDetails.success && mailDetails.data) {
-                    const fullApiData = mailDetails.data.data;
-                    console.log("[Background]: Fetched fullApiData (for rule '"+rule.name+"'):", JSON.stringify(fullApiData, null, 2));
-                    
-                    // Update the main state variables for subsequent rules as well
-                    currentBodyContent = currentBodyContent || fullApiData.body || '';
-                    console.log(`[Background]: currentBodyContent for rule '${rule.name}' after fetch update (length: ${currentBodyContent ? currentBodyContent.length : 0}): '${currentBodyContent.substring(0, 200)}${currentBodyContent && currentBodyContent.length > 200 ? '...' : ''}'`);
-                    
-                    if ((!currentSender || typeof currentSender.email === 'undefined') && fullApiData.from) {
-                         if (typeof fullApiData.from === 'object') {
-                            currentSender = {
-                                displayName: fullApiData.from.displayName || '',
-                                email: fullApiData.from.email || ''
-                            };
-                        } else if (typeof fullApiData.from === 'string') {
-                            currentSender = { displayName: fullApiData.from, email: '' };
-                        }
-                        console.log("[Background]: Sender updated from fullApiData:", currentSender);
-                    }
-                    
-                    if (mailDetails.recipient) { // mailDetails.recipient IS the array
-                        currentRecipient = mailDetails.recipient; 
-                        console.log("[Background]: Recipient array updated from mailDetails:", currentRecipient);
-                    }
-                    if (mailDetails.ccRecipients) {
-                        currentCcRecipients = mailDetails.ccRecipients;
-                        console.log("[Background]: CC Recipient array updated from mailDetails:", currentCcRecipients);
-                    }
-
-                    console.log(`[Background]: 成功获取完整邮件内容 for ${currentMailId}. Updated Sender:`, currentSender, ", Updated Recipient(To):", currentRecipient ? currentRecipient.length : 0, ", Updated CC: ", currentCcRecipients ? currentCcRecipients.length : 0 );
-                    
-                    // Re-evaluate conditions based on newly fetched data
-                    // Important: AND with existing conditionMet status
-                    let tempConditionMetAfterFetch = true;
-                    if (rule.conditions?.sender?.enabled) {
-                        if (!currentSender) { tempConditionMetAfterFetch = false; } // Should not happen if fetch was for sender
-                        else {
-                            const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
-                            console.log(`[Background]: (完整邮件后) 发件人条件匹配结果: ${senderMatch}`);
-                            tempConditionMetAfterFetch = tempConditionMetAfterFetch && senderMatch;
-                        }
-                    }
-
-                    if (requiresRecipientRule) { // Check enabled flag directly
-                        if (!currentRecipient) {
-                            console.warn(`[Background]: 收件人信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的收件人条件`);
-                            tempConditionMetAfterFetch = false;
+                            console.log(`[Background]: Mail details fetched for AI rule. Subject: "${currentSubject}", Body length: ${currentBodyContent.length}`);
                         } else {
-                            const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
-                            console.log(`[Background]: (完整邮件后) 收件人条件匹配结果: ${recipientMatch}`);
-                            tempConditionMetAfterFetch = tempConditionMetAfterFetch && recipientMatch;
+                            console.error(`[Background]: Failed to fetch mail body for AI rule "${rule.name}". Skipping AI check.`);
+                            conditionMet = false; // Cannot proceed with AI check
+                            // continue; // Skip to next rule - or let it fall through to conditionMet = false check
                         }
+                    } catch (fetchError) {
+                        console.error(`[Background]: Error fetching mail body for AI rule "${rule.name}":`, fetchError);
+                        conditionMet = false;
+                        // continue;
                     }
-                    
-                    if (requiresCcRule) { // Check enabled flag directly
-                        if (!currentCcRecipients) {
-                            console.warn(`[Background]: 抄送信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的抄送条件`);
-                            tempConditionMetAfterFetch = false;
-                        } else {
-                            const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
-                            console.log(`[Background]: (完整邮件后) 抄送条件匹配结果: ${ccMatch}`);
-                            tempConditionMetAfterFetch = tempConditionMetAfterFetch && ccMatch;
-                        }
-                    }
-                    conditionMet = conditionMet && tempConditionMetAfterFetch;
-
+                }
+                
+                // Proceed only if we have the necessary content after potential fetch
+                if (currentSubject && currentBodyContent) { // Check both, as AI prompt relies on them
+                    conditionMet = await checkEmailWithGemini(
+                        activeLlmConfig.apiKey,
+                        activeLlmConfig.model,
+                        rule.aiPrompt.system, // System prompt from the rule itself (captured at rule save time)
+                        rule.aiPrompt.user,
+                        currentSubject, 
+                        currentBodyContent 
+                    );
+                    console.log(`[Background]: AI Rule "${rule.name}" evaluation result: ${conditionMet}`);
                 } else {
-                    console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容失败，无法评估依赖正文/收件人的规则 "${rule.name}"`);
-                    // If fetch failed for data that was required for conditions, those conditions might fail or be unevaluable.
-                    // Set conditionMet to false if critical data for *this rule* is still missing.
+                    console.warn(`[Background]: AI Rule "${rule.name}" skipped. Missing subject or body content even after potential fetch.`);
+                    conditionMet = false;
+                }
+
+            } else {
+                console.warn(`[Background]: Skipping AI rule "${rule.name}" due to missing or non-Google LLM configuration, or missing prompt.`);
+                conditionMet = false;
+            }
+        } else { // 'normal' condition mode
+            conditionMet = true; // Start with true for normal rules, then AND with each condition check
+            const requiresBody = rule.conditions?.body?.enabled;
+            const requiresRecipientRule = rule.conditions?.recipient?.enabled;
+            const requiresCcRule = rule.conditions?.cc?.enabled;
+
+            // 检查发件人条件
+            if (rule.conditions?.sender?.enabled) {
+                if (!currentSender) {
+                    console.warn(`[Background]: 发件人信息缺失，规则 "${rule.name}" 的发件人条件无法评估，若无后续获取则视为不匹配。`);
+                    // This situation should be rare if initial fetch logic works.
+                    // If sender is critical and missing, conditionMet might become false after fetch attempt.
+                } else {
+                    const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
+                    console.log(`[Background]: 发件人条件匹配结果: ${senderMatch}`);
+                    conditionMet = conditionMet && senderMatch;
+                }
+            }
+            
+            // 检查收件人条件
+            if (rule.conditions?.recipient?.enabled) {
+                if (!currentRecipient) {
+                     console.log(`[Background]: 规则 "${rule.name}" 需要收件人信息，当前缺失。`);
+                } else {
+                    const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
+                    console.log(`[Background]: 收件人条件匹配结果: ${recipientMatch}`);
+                    conditionMet = conditionMet && recipientMatch;
+                }
+            }
+
+            // 检查抄送条件
+            if (rule.conditions?.cc?.enabled) {
+                if (!currentCcRecipients) {
+                     console.log(`[Background]: 规则 "${rule.name}" 需要抄送信息，当前缺失。`);
+                } else {
+                    const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
+                    console.log(`[Background]: 抄送条件匹配结果: ${ccMatch}`);
+                    conditionMet = conditionMet && ccMatch;
+                }
+            }
+
+            // 检查主题条件
+            if (rule.conditions?.subject?.enabled) {
+                const subjectMatch = checkCondition(rule.conditions.subject, currentSubject);
+                console.log(`[Background]: 主题条件匹配结果: ${subjectMatch}`);
+                conditionMet = conditionMet && subjectMatch;
+            }
+
+            // 如果目前条件已不满足，则跳过此规则
+            if (!conditionMet) {
+                console.log(`[Background]: 规则 "${rule.name}" 基于头部信息不匹配邮件 ${currentMailId}`);
+                continue;
+            }
+
+            // 如果需要正文、收件人或抄送信息，但当前没有，则获取完整邮件信息
+            // This fetch is for the *current rule's needs*.
+            const needsFurtherDataFetch = (requiresBody && !currentBodyContent) ||
+                                       (requiresRecipientRule && !currentRecipient) ||
+                                       (requiresCcRule && !currentCcRecipients);
+
+            if (needsFurtherDataFetch) {
+                console.log(`[Background]: 规则 "${rule.name}" 需要正文/收件人/抄送信息，请求完整邮件内容 for ${currentMailId}`);
+                try {
+                    const mailDetails = await chrome.tabs.sendMessage(tabId, {
+                        action: "fetchMailBody",
+                        mailId: currentMailId // Use currentMailId
+                    });
+
+                    if (mailDetails && mailDetails.success && mailDetails.data) {
+                        const fullApiData = mailDetails.data.data;
+                        console.log("[Background]: Fetched fullApiData (for rule '"+rule.name+"'):", JSON.stringify(fullApiData, null, 2));
+                        
+                        // Update the main state variables for subsequent rules as well
+                        currentBodyContent = currentBodyContent || fullApiData.body || '';
+                        console.log(`[Background]: currentBodyContent for rule '${rule.name}' after fetch update (length: ${currentBodyContent ? currentBodyContent.length : 0}): '${currentBodyContent.substring(0, 200)}${currentBodyContent && currentBodyContent.length > 200 ? '...' : ''}'`);
+                        
+                        if ((!currentSender || typeof currentSender.email === 'undefined') && fullApiData.from) {
+                             if (typeof fullApiData.from === 'object') {
+                                currentSender = {
+                                    displayName: fullApiData.from.displayName || '',
+                                    email: fullApiData.from.email || ''
+                                };
+                            } else if (typeof fullApiData.from === 'string') {
+                                currentSender = { displayName: fullApiData.from, email: '' };
+                            }
+                            console.log("[Background]: Sender updated from fullApiData:", currentSender);
+                        }
+                        
+                        if (mailDetails.recipient) { // mailDetails.recipient IS the array
+                            currentRecipient = mailDetails.recipient; 
+                            console.log("[Background]: Recipient array updated from mailDetails:", currentRecipient);
+                        }
+                        if (mailDetails.ccRecipients) {
+                            currentCcRecipients = mailDetails.ccRecipients;
+                            console.log("[Background]: CC Recipient array updated from mailDetails:", currentCcRecipients);
+                        }
+
+                        console.log(`[Background]: 成功获取完整邮件内容 for ${currentMailId}. Updated Sender:`, currentSender, ", Updated Recipient(To):", currentRecipient ? currentRecipient.length : 0, ", Updated CC: ", currentCcRecipients ? currentCcRecipients.length : 0 );
+                        
+                        // Re-evaluate conditions based on newly fetched data
+                        // Important: AND with existing conditionMet status
+                        let tempConditionMetAfterFetch = true;
+                        if (rule.conditions?.sender?.enabled) {
+                            if (!currentSender) { tempConditionMetAfterFetch = false; } // Should not happen if fetch was for sender
+                            else {
+                                const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
+                                console.log(`[Background]: (完整邮件后) 发件人条件匹配结果: ${senderMatch}`);
+                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && senderMatch;
+                            }
+                        }
+
+                        if (requiresRecipientRule) { // Check enabled flag directly
+                            if (!currentRecipient) {
+                                console.warn(`[Background]: 收件人信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的收件人条件`);
+                                tempConditionMetAfterFetch = false;
+                            } else {
+                                const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
+                                console.log(`[Background]: (完整邮件后) 收件人条件匹配结果: ${recipientMatch}`);
+                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && recipientMatch;
+                            }
+                        }
+                        
+                        if (requiresCcRule) { // Check enabled flag directly
+                            if (!currentCcRecipients) {
+                                console.warn(`[Background]: 抄送信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的抄送条件`);
+                                tempConditionMetAfterFetch = false;
+                            } else {
+                                const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
+                                console.log(`[Background]: (完整邮件后) 抄送条件匹配结果: ${ccMatch}`);
+                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && ccMatch;
+                            }
+                        }
+                        conditionMet = conditionMet && tempConditionMetAfterFetch;
+
+                    } else {
+                        console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容失败，无法评估依赖正文/收件人的规则 "${rule.name}"`);
+                        // If fetch failed for data that was required for conditions, those conditions might fail or be unevaluable.
+                        // Set conditionMet to false if critical data for *this rule* is still missing.
+                        if (requiresRecipientRule && !currentRecipient) conditionMet = false;
+                        if (requiresCcRule && !currentCcRecipients) conditionMet = false;
+                        if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false; // If body was target of fetch
+                    }
+                } catch (error) {
+                    console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容时出错:`, error);
                     if (requiresRecipientRule && !currentRecipient) conditionMet = false;
                     if (requiresCcRule && !currentCcRecipients) conditionMet = false;
-                    if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false; // If body was target of fetch
+                    if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false;
                 }
-            } catch (error) {
-                console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容时出错:`, error);
-                if (requiresRecipientRule && !currentRecipient) conditionMet = false;
-                if (requiresCcRule && !currentCcRecipients) conditionMet = false;
-                if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false;
+            }
+            
+            // 如果仍然不匹配 (e.g. recipient check failed after fetch or AI check failed)
+            if (!conditionMet) {
+                console.log(`[Background]: 规则 "${rule.name}" (mode: ${ruleConditionMode}) 在获取/评估完整信息后不匹配邮件 ${currentMailId}`);
+                continue;
+            }
+
+            // 检查正文条件 (if required and body is available) - ONLY for normal rules
+            if (ruleConditionMode === 'normal' && requiresBody) { // True if rule.conditions.body.enabled
+                if (!currentBodyContent) { // Check currentBodyContent, which would have been updated by fetch if successful
+                     console.warn(`[Background]: 规则 "${rule.name}" 的正文条件启用，但正文内容最终无法获取。规则不匹配。`);
+                     conditionMet = false; // CRITICAL FIX: If body required by rule, but no content, rule fails.
+                } else {
+                    const bodyMatch = checkCondition(rule.conditions.body, currentBodyContent);
+                    console.log(`[Background]: 正文条件匹配结果: ${bodyMatch}`);
+                    conditionMet = conditionMet && bodyMatch;
+                }
             }
         }
         
-        // 如果仍然不匹配 (e.g. recipient check failed after fetch)
-        if (!conditionMet) {
-            console.log(`[Background]: 规则 "${rule.name}" 在获取完整信息后不匹配邮件 ${currentMailId}`);
-            continue;
-        }
-
-        // 检查正文条件 (if required and body is available)
-        if (requiresBody) { // True if rule.conditions.body.enabled
-            if (!currentBodyContent) { // Check currentBodyContent, which would have been updated by fetch if successful
-                 console.warn(`[Background]: 规则 "${rule.name}" 的正文条件启用，但正文内容最终无法获取。规则不匹配。`);
-                 conditionMet = false; // CRITICAL FIX: If body required by rule, but no content, rule fails.
-            } else {
-                const bodyMatch = checkCondition(rule.conditions.body, currentBodyContent);
-                console.log(`[Background]: 正文条件匹配结果: ${bodyMatch}`);
-                conditionMet = conditionMet && bodyMatch;
-            }
-        }
-
         if (conditionMet) {
             console.log(`[Background]: 规则 "${rule.name}" 匹配邮件 ${currentMailId} 成功。执行操作...`);
             
@@ -1047,7 +1138,7 @@ async function determineActionsForSingleMailManual(mailDetailsSoFar, rulesToAppl
         }
         if (conditionMet && rule.conditions?.cc?.enabled) {
             if (!mailDetailsSoFar.ccRecipients || mailDetailsSoFar.ccRecipients.length === 0) {
-                conditionMet = fetchedFullDetails && (!mailDetailsSoFar.ccRecipients || mailDetailsSoFar.ccRecipients.length === 0) ? false : conditionMet;
+                conditionMet = fetchedFullDetails && (!mailDetailsSoar.ccRecipients || mailDetailsSoFar.ccRecipients.length === 0) ? false : conditionMet;
                 if (!fetchedFullDetails && !mailDetailsSoFar.ccRecipients) conditionMet = false;
             } else { 
                 conditionMet = conditionMet && checkAddressCondition(rule.conditions.cc, mailDetailsSoFar.ccRecipients, true); 

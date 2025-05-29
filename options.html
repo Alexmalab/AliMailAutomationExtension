@@ -454,6 +454,53 @@
         .multi-select-item input[type="checkbox"] {
             margin: 0;
         }
+
+        /* LLM API Management Styles */
+        .llm-api-management .api-provider-group {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        .llm-api-management .api-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .llm-api-management .api-header label {
+            font-weight: bold;
+            margin-bottom: 0;
+        }
+        .llm-api-management .preferred-label {
+            font-weight: normal;
+            font-size: 0.9em;
+        }
+        .llm-api-management .preferred-label input[type="radio"] {
+            margin-right: 5px;
+        }
+        .llm-api-management input[type="password"],
+        .llm-api-management select {
+            width: calc(100% - 16px);
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .llm-api-management .api-status-note {
+            font-size: 0.85em;
+            color: #777;
+            margin-top: 5px;
+        }
+        .llm-api-management .submit-btn {
+             background-color: #007bff; /* Blue like in rule modal */
+             border-color: #0056b3;
+             color: white;
+        }
+        .llm-api-management .submit-btn:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -462,21 +509,75 @@
     <div class="controls">
         <button id="newRuleBtn">新建规则</button>
         <button id="manualExecuteBtn">手动执行规则</button>
-        <button id="deleteSelectedBtn" disabled>删除选中 (未实现)</button>
+        <button id="deleteSelectedBtn">删除选中</button>
     </div>
 
     <table id="rulesList">
         <thead>
             <tr>
-                <th><input type="checkbox" id="selectAllRules" title="全选/全不选"></th>
-                <th>名称</th>
+                <th><input type="checkbox" id="selectAllRules" title="全选/取消全选"></th>
+                <th>规则名称</th>
                 <th>操作</th>
+                <th>Order</th>
                 <th>状态</th>
             </tr>
         </thead>
         <tbody>
             </tbody>
     </table>
+
+    <hr style="margin-top: 30px; margin-bottom: 30px;">
+
+    <h2>LLM API 管理</h2>
+    <div id="llmApiManagementSection" class="llm-api-management">
+        
+        <!-- Google Gemini Section -->
+        <div class="api-provider-group">
+            <div class="api-header">
+                <label for="googleApiKey">Google API Key</label>
+                <label class="preferred-label"><input type="radio" name="preferredApi" value="google" checked> 设为首选</label>
+            </div>
+            <input type="password" id="googleApiKey" placeholder="输入您的 Google API Key">
+            <select id="googleModelSelect">
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash-Lite</option>
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            </select>
+        </div>
+
+        <!-- OpenAI Section (Placeholder) -->
+        <div class="api-provider-group">
+            <div class="api-header">
+                <label for="openaiApiKey">OpenAI API Key</label>
+                <label class="preferred-label"><input type="radio" name="preferredApi" value="openai" disabled> 设为首选</label>
+            </div>
+            <input type="password" id="openaiApiKey" placeholder="输入您的 OpenAI API Key" disabled>
+            <select id="openaiModelSelect" disabled>
+                <option value="">选择模型</option>
+                <!-- <option value="gpt-4-turbo-preview">GPT-4 Turbo</option> -->
+                <!-- <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option> -->
+            </select>
+        </div>
+
+        <!-- Anthropic Section (Placeholder) -->
+        <div class="api-provider-group">
+            <div class="api-header">
+                <label for="anthropicApiKey">Anthropic API Key</label>
+                <label class="preferred-label"><input type="radio" name="preferredApi" value="anthropic" disabled> 设为首选</label>
+            </div>
+            <input type="password" id="anthropicApiKey" placeholder="输入您的 Anthropic API Key" disabled>
+            <select id="anthropicModelSelect" disabled>
+                <option value="">选择模型</option>
+                <!-- <option value="claude-3-opus-20240229">Claude 3 Opus</option> -->
+                <!-- <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option> -->
+            </select>
+            <p class="api-status-note">Anthropic API 尚未实现。</p>
+        </div>
+
+        <button id="saveLlmApiConfigBtn" class="submit-btn">保存</button>
+        <p id="llmConfigStatus" style="margin-top: 10px;"></p>
+    </div>
 
     <div id="ruleModal" class="modal">
         <div class="modal-content">
@@ -495,99 +596,118 @@
 
                 <h3>收信条件</h3>
                 <hr>
-                
-                <!-- 发件人地址条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="senderConditionToggle">
-                        <label>发件人地址</label>
-                    </div>
-                    <div class="condition-content">
-                        <select id="senderConditionType" disabled>
-                            <option value="include">包含</option>
-                            <option value="exclude">不包含</option>
-                        </select>
-                        <input type="text" id="senderAddress" disabled placeholder="输入发件人地址/昵称">
-                        <label><input type="checkbox" id="senderCaseSensitive" disabled> 区分大小写</label>
-                    </div>
+
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label style="display: inline-block; margin-right: 15px;"><input type="radio" name="conditionMode" value="normal" checked style="margin-right: 5px;"> 普通条件</label>
+                    <label style="display: inline-block;"><input type="radio" name="conditionMode" value="ai" style="margin-right: 5px;"> AI判断</label>
                 </div>
 
-                <!-- 收件人地址条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="recipientConditionToggle">
-                        <label>收件人地址</label>
+                <div id="normalConditionsContainer">
+                    <!-- 发件人地址条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="senderConditionToggle">
+                            <label>发件人地址</label>
+                        </div>
+                        <div class="condition-content">
+                            <select id="senderConditionType" disabled>
+                                <option value="include">包含</option>
+                                <option value="exclude">不包含</option>
+                            </select>
+                            <input type="text" id="senderAddress" disabled placeholder="输入发件人地址/昵称">
+                            <label><input type="checkbox" id="senderCaseSensitive" disabled> 区分大小写</label>
+                        </div>
                     </div>
-                    <div class="condition-content">
-                        <select id="recipientConditionType" disabled>
-                            <option value="include">包含</option>
-                            <option value="exclude">不包含</option>
-                        </select>
-                        <input type="text" id="recipientAddress" disabled placeholder="输入收件人地址/昵称">
-                        <label><input type="checkbox" id="recipientCaseSensitive" disabled> 区分大小写</label>
-                    </div>
-                </div>
 
-                <!-- 抄送地址条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="ccConditionToggle">
-                        <label>抄送地址</label>
+                    <!-- 收件人地址条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="recipientConditionToggle">
+                            <label>收件人地址</label>
+                        </div>
+                        <div class="condition-content">
+                            <select id="recipientConditionType" disabled>
+                                <option value="include">包含</option>
+                                <option value="exclude">不包含</option>
+                            </select>
+                            <input type="text" id="recipientAddress" disabled placeholder="输入收件人地址/昵称">
+                            <label><input type="checkbox" id="recipientCaseSensitive" disabled> 区分大小写</label>
+                        </div>
                     </div>
-                    <div class="condition-content">
-                        <select id="ccConditionType" disabled>
-                            <option value="include">包含</option>
-                            <option value="exclude">不包含</option>
-                        </select>
-                        <input type="text" id="ccAddress" disabled placeholder="输入抄送地址/昵称">
-                        <label><input type="checkbox" id="ccCaseSensitive" disabled> 区分大小写</label>
-                    </div>
-                </div>
 
-                <!-- 主题条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="subjectConditionToggle">
-                        <label>主题</label>
+                    <!-- 抄送地址条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="ccConditionToggle">
+                            <label>抄送地址</label>
+                        </div>
+                        <div class="condition-content">
+                            <select id="ccConditionType" disabled>
+                                <option value="include">包含</option>
+                                <option value="exclude">不包含</option>
+                            </select>
+                            <input type="text" id="ccAddress" disabled placeholder="输入抄送地址/昵称">
+                            <label><input type="checkbox" id="ccCaseSensitive" disabled> 区分大小写</label>
+                        </div>
                     </div>
-                    <div class="condition-content">
-                        <select id="subjectConditionType" disabled>
-                            <option value="include">包含关键字</option>
-                            <option value="exclude">不包含关键字</option>
-                        </select>
-                        <label><input type="checkbox" id="subjectCaseSensitive" disabled> 区分大小写</label>
-                        <div class="keywords-container" id="subjectKeywordsContainer"></div>
-                    </div>
-                </div>
 
-                <!-- 正文条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="bodyConditionToggle">
-                        <label>正文</label>
+                    <!-- 主题条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="subjectConditionToggle">
+                            <label>主题</label>
+                        </div>
+                        <div class="condition-content">
+                            <select id="subjectConditionType" disabled>
+                                <option value="include">包含关键字</option>
+                                <option value="exclude">不包含关键字</option>
+                            </select>
+                            <label><input type="checkbox" id="subjectCaseSensitive" disabled> 区分大小写</label>
+                            <div class="keywords-container" id="subjectKeywordsContainer"></div>
+                        </div>
                     </div>
-                    <div class="condition-content">
-                        <select id="bodyConditionType" disabled>
-                            <option value="include">包含关键字</option>
-                            <option value="exclude">不包含关键字</option>
-                        </select>
-                        <label><input type="checkbox" id="bodyCaseSensitive" disabled> 区分大小写</label>
-                        <div class="keywords-container" id="bodyKeywordsContainer"></div>
-                    </div>
-                </div>
 
-                <!-- 附件条件 -->
-                <div class="condition-group">
-                    <div class="condition-header">
-                        <input type="checkbox" id="attachmentConditionToggle" disabled>
-                        <label>附件</label>
+                    <!-- 正文条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="bodyConditionToggle">
+                            <label>正文</label>
+                        </div>
+                        <div class="condition-content">
+                            <select id="bodyConditionType" disabled>
+                                <option value="include">包含关键字</option>
+                                <option value="exclude">不包含关键字</option>
+                            </select>
+                            <label><input type="checkbox" id="bodyCaseSensitive" disabled> 区分大小写</label>
+                            <div class="keywords-container" id="bodyKeywordsContainer"></div>
+                        </div>
                     </div>
-                    <div class="condition-content">
-                        <select disabled>
-                            <option>带附件</option>
-                            <option>不带附件</option>
-                        </select>
+
+                    <!-- 附件条件 -->
+                    <div class="condition-group">
+                        <div class="condition-header">
+                            <input type="checkbox" id="attachmentConditionToggle" disabled>
+                            <label>附件</label>
+                        </div>
+                        <div class="condition-content">
+                            <select disabled>
+                                <option>带附件</option>
+                                <option>不带附件</option>
+                            </select>
+                        </div>
                     </div>
+                </div> <!-- End of normalConditionsContainer -->
+
+                <div id="aiConditionsContainer" style="display: none;">
+                    <div class="form-group">
+                        <label for="systemPromptDisplay">内置系统 Prompt:</label>
+                        <textarea id="systemPromptDisplay" rows="4" readonly style="background-color: #f0f0f0; color: #555;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="userAiPrompt">您的 AI Prompt (邮件内容将作为上下文):</label>
+                        <textarea id="userAiPrompt" rows="6" placeholder="例如：判断这封邮件是否为广告营销邮件。"></textarea>
+                    </div>
+                     <p style="font-size: 0.9em; color: #666;">AI将根据您的Prompt和邮件内容判断是否匹配。</p>
                 </div>
 
                 <h3>执行操作</h3>

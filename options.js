@@ -62,6 +62,15 @@ let selectedTags = new Set();
 let availableTags = {};
 let availableFolders = {};
 
+// AI Condition Elements
+const systemPromptDisplay = document.getElementById('systemPromptDisplay');
+const userAiPromptInput = document.getElementById('userAiPrompt');
+const normalConditionsContainer = document.getElementById('normalConditionsContainer');
+const aiConditionsContainer = document.getElementById('aiConditionsContainer');
+const conditionModeRadios = document.querySelectorAll('input[name="conditionMode"]');
+
+const DEFAULT_SYSTEM_PROMPT = `You are an email classification assistant. Based on the user\'s query and the provided email content (subject and body), determine if the email matches the user\'s criteria.\nRespond with only \'MATCH\' if it matches, or \'NO_MATCH\' if it does not. Do not provide any explanation or any other text.`;
+
 // ===============================================
 // UI 辅助函数
 // ===============================================
@@ -123,6 +132,13 @@ function clearForm() {
 
     // 重置停止处理其他规则选项
     stopProcessingAction.checked = true; // 默认勾选
+
+    // Reset AI conditions
+    document.querySelector('input[name="conditionMode"][value="normal"]').checked = true;
+    normalConditionsContainer.style.display = 'block';
+    aiConditionsContainer.style.display = 'none';
+    systemPromptDisplay.value = DEFAULT_SYSTEM_PROMPT;
+    userAiPromptInput.value = '';
 }
 
 function toggleConditionFields(conditionType, enabled) {
@@ -505,90 +521,122 @@ ruleForm.addEventListener('submit', async (e) => {
     const ruleId = ruleIdInput.value;
     const ruleName = ruleNameInput.value.trim();
     const ruleEnabled = ruleEnabledCheckbox.checked;
+    const conditionMode = document.querySelector('input[name="conditionMode"]:checked').value;
 
     if (!ruleName) {
         alert('规则名称不能为空！');
         return;
     }
 
-    // 收集主题条件
-    const subjectCondition = {};
-    if (subjectConditionToggle.checked) {
-        subjectCondition.enabled = true;
-        subjectCondition.type = subjectConditionType.value;
-        subjectCondition.keywords = getKeywordsFromContainer(subjectKeywordsContainer);
-        subjectCondition.caseSensitive = subjectCaseSensitiveCheckbox.checked;
+    let conditions = {};
+    let aiPromptDetails = null;
 
-        if (subjectCondition.keywords.length === 0) {
-            alert('请至少为主题条件输入一个关键字！');
+    if (conditionMode === 'normal') {
+        // 收集主题条件
+        const subjectCondition = {};
+        if (subjectConditionToggle.checked) {
+            subjectCondition.enabled = true;
+            subjectCondition.type = subjectConditionType.value;
+            subjectCondition.keywords = getKeywordsFromContainer(subjectKeywordsContainer);
+            subjectCondition.caseSensitive = subjectCaseSensitiveCheckbox.checked;
+
+            if (subjectCondition.keywords.length === 0) {
+                alert('请至少为主题条件输入一个关键字！');
+                return;
+            }
+        } else {
+            subjectCondition.enabled = false;
+        }
+
+        // 收集发件人条件
+        const senderCondition = {};
+        if (senderConditionToggle.checked) {
+            senderCondition.enabled = true;
+            senderCondition.type = senderConditionType.value;
+            senderCondition.address = senderAddressInput.value;
+            senderCondition.caseSensitive = senderCaseSensitiveCheckbox.checked;
+
+            if (!senderCondition.address) {
+                alert('请输入发件人地址！');
+                return;
+            }
+        } else {
+            senderCondition.enabled = false;
+        }
+
+        // 收集收件人条件
+        const recipientCondition = {};
+        if (recipientConditionToggle.checked) {
+            recipientCondition.enabled = true;
+            recipientCondition.type = recipientConditionType.value;
+            recipientCondition.address = recipientAddressInput.value;
+            recipientCondition.caseSensitive = recipientCaseSensitiveCheckbox.checked;
+
+            if (!recipientCondition.address) {
+                alert('请输入收件人地址！');
+                return;
+            }
+        } else {
+            recipientCondition.enabled = false;
+        }
+
+        // 收集抄送条件
+        const ccCondition = {};
+        if (ccConditionToggle.checked) {
+            ccCondition.enabled = true;
+            ccCondition.type = ccConditionType.value;
+            ccCondition.address = ccAddressInput.value.trim();
+            ccCondition.caseSensitive = ccCaseSensitiveCheckbox.checked;
+
+            if (!ccCondition.address) {
+                alert('请输入抄送地址！');
+                return;
+            }
+        } else {
+            ccCondition.enabled = false;
+        }
+
+        // 收集正文条件
+        const bodyCondition = {};
+        if (bodyConditionToggle.checked) {
+            bodyCondition.enabled = true;
+            bodyCondition.type = bodyConditionType.value;
+            bodyCondition.keywords = getKeywordsFromContainer(bodyKeywordsContainer);
+            bodyCondition.caseSensitive = bodyCaseSensitiveCheckbox.checked;
+
+            if (bodyCondition.keywords.length === 0) {
+                alert('请至少为正文条件输入一个关键字！');
+                return;
+            }
+        } else {
+            bodyCondition.enabled = false;
+        }
+
+        conditions = {
+            subject: subjectCondition,
+            sender: senderCondition,
+            recipient: recipientCondition,
+            cc: ccCondition,
+            body: bodyCondition,
+        };
+    } else { // conditionMode === 'ai'
+        const userPrompt = userAiPromptInput.value.trim();
+        if (!userPrompt) {
+            alert('AI Prompt 不能为空！');
             return;
         }
-    } else {
-        subjectCondition.enabled = false;
-    }
-
-    // 收集发件人条件
-    const senderCondition = {};
-    if (senderConditionToggle.checked) {
-        senderCondition.enabled = true;
-        senderCondition.type = senderConditionType.value;
-        senderCondition.address = senderAddressInput.value;
-        senderCondition.caseSensitive = senderCaseSensitiveCheckbox.checked;
-
-        if (!senderCondition.address) {
-            alert('请输入发件人地址！');
-            return;
-        }
-    } else {
-        senderCondition.enabled = false;
-    }
-
-    // 收集收件人条件
-    const recipientCondition = {};
-    if (recipientConditionToggle.checked) {
-        recipientCondition.enabled = true;
-        recipientCondition.type = recipientConditionType.value;
-        recipientCondition.address = recipientAddressInput.value;
-        recipientCondition.caseSensitive = recipientCaseSensitiveCheckbox.checked;
-
-        if (!recipientCondition.address) {
-            alert('请输入收件人地址！');
-            return;
-        }
-    } else {
-        recipientCondition.enabled = false;
-    }
-
-    // 收集抄送条件
-    const ccCondition = {};
-    if (ccConditionToggle.checked) {
-        ccCondition.enabled = true;
-        ccCondition.type = ccConditionType.value;
-        ccCondition.address = ccAddressInput.value.trim();
-        ccCondition.caseSensitive = ccCaseSensitiveCheckbox.checked;
-
-        if (!ccCondition.address) {
-            alert('请输入抄送地址！');
-            return;
-        }
-    } else {
-        ccCondition.enabled = false;
-    }
-
-    // 收集正文条件
-    const bodyCondition = {};
-    if (bodyConditionToggle.checked) {
-        bodyCondition.enabled = true;
-        bodyCondition.type = bodyConditionType.value;
-        bodyCondition.keywords = getKeywordsFromContainer(bodyKeywordsContainer);
-        bodyCondition.caseSensitive = bodyCaseSensitiveCheckbox.checked;
-
-        if (bodyCondition.keywords.length === 0) {
-            alert('请至少为正文条件输入一个关键字！');
-            return;
-        }
-    } else {
-        bodyCondition.enabled = false;
+        aiPromptDetails = {
+            system: DEFAULT_SYSTEM_PROMPT, // Store the system prompt used at the time of saving
+            user: userPrompt
+        };
+        // For AI mode, individual conditions are implicitly disabled or not applicable
+        conditions = {
+            subject: { enabled: false },
+            sender: { enabled: false },
+            recipient: { enabled: false },
+            cc: { enabled: false },
+            body: { enabled: false },
+        };
     }
 
     // 收集操作
@@ -614,13 +662,9 @@ ruleForm.addEventListener('submit', async (e) => {
         id: ruleId || Date.now().toString(), // 新建时生成ID
         name: ruleName,
         enabled: ruleEnabled,
-        conditions: {
-            subject: subjectCondition,
-            sender: senderCondition,
-            recipient: recipientCondition,
-            cc: ccCondition,
-            body: bodyCondition,
-        },
+        conditionMode: conditionMode, // 'normal' or 'ai'
+        conditions: conditions,       // Contains traditional conditions OR serves as a placeholder for AI mode
+        aiPrompt: aiPromptDetails,    // Contains AI prompt details if mode is 'ai', else null
         action: action
     };
 
@@ -653,7 +697,7 @@ async function renderRules() {
             return;
         }
         
-        rules.forEach(rule => {
+        rules.forEach((rule, index) => {
             const row = rulesListBody.insertRow();
             row.dataset.ruleId = rule.id;
 
@@ -700,6 +744,22 @@ async function renderRules() {
                 }
             });
             actionCell.appendChild(deleteBtn);
+
+            // Order buttons cell
+            const orderCell = row.insertCell();
+            const upButton = document.createElement('button');
+            upButton.textContent = '↑';
+            upButton.title = 'Move rule up';
+            upButton.disabled = index === 0; // Disable for the first rule
+            upButton.addEventListener('click', () => moveRule(rule.id, 'up'));
+            orderCell.appendChild(upButton);
+
+            const downButton = document.createElement('button');
+            downButton.textContent = '↓';
+            downButton.title = 'Move rule down';
+            downButton.disabled = index === rules.length - 1; // Disable for the last rule
+            downButton.addEventListener('click', () => moveRule(rule.id, 'down'));
+            orderCell.appendChild(downButton);
 
             // 状态滑块
             const statusCell = row.insertCell();
@@ -822,69 +882,96 @@ function editRule(rule) {
     ruleNameInput.value = rule.name;
     ruleEnabledCheckbox.checked = rule.enabled;
 
-    // 填充主题条件
-    if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
-        subjectConditionToggle.checked = true;
-        toggleConditionFields('subject', true);
-        subjectConditionType.value = rule.conditions.subject.type || 'include';
-        subjectCaseSensitiveCheckbox.checked = rule.conditions.subject.caseSensitive || false;
-        populateKeywordsContainer(subjectKeywordsContainer, rule.conditions.subject.keywords);
-    } else {
-        subjectConditionToggle.checked = false;
+    const conditionMode = rule.conditionMode || 'normal'; // Default to normal if not set
+    document.querySelector(`input[name="conditionMode"][value="${conditionMode}"]`).checked = true;
+
+    if (conditionMode === 'ai') {
+        normalConditionsContainer.style.display = 'none';
+        aiConditionsContainer.style.display = 'block';
+        systemPromptDisplay.value = rule.aiPrompt?.system || DEFAULT_SYSTEM_PROMPT;
+        userAiPromptInput.value = rule.aiPrompt?.user || '';
+        // Clear/disable normal condition fields just in case
+        // (clearForm partially does this, but being explicit for AI mode is good)
+        [
+            subjectConditionToggle, senderConditionToggle, 
+            recipientConditionToggle, ccConditionToggle, bodyConditionToggle
+        ].forEach(toggle => { toggle.checked = false; });
         toggleConditionFields('subject', false);
-        populateKeywordsContainer(subjectKeywordsContainer, []); // 默认添加一个空输入框
-    }
-
-    // 填充发件人条件
-    if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
-        senderConditionToggle.checked = true;
-        toggleConditionFields('sender', true);
-        senderConditionType.value = rule.conditions.sender.type || 'include';
-        senderAddressInput.value = rule.conditions.sender.address || '';
-        senderCaseSensitiveCheckbox.checked = rule.conditions.sender.caseSensitive || false;
-    } else {
-        senderConditionToggle.checked = false;
         toggleConditionFields('sender', false);
-        senderAddressInput.value = '';
-    }
-
-    // 填充收件人条件
-    if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
-        recipientConditionToggle.checked = true;
-        toggleConditionFields('recipient', true);
-        recipientConditionType.value = rule.conditions.recipient.type || 'include';
-        recipientAddressInput.value = rule.conditions.recipient.address || '';
-        recipientCaseSensitiveCheckbox.checked = rule.conditions.recipient.caseSensitive || false;
-    } else {
-        recipientConditionToggle.checked = false;
         toggleConditionFields('recipient', false);
-        recipientAddressInput.value = '';
-    }
-
-    // 填充抄送条件
-    if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
-        ccConditionToggle.checked = true;
-        toggleConditionFields('cc', true);
-        ccConditionType.value = rule.conditions.cc.type || 'include';
-        ccAddressInput.value = rule.conditions.cc.address || '';
-        ccCaseSensitiveCheckbox.checked = rule.conditions.cc.caseSensitive || false;
-    } else {
-        ccConditionToggle.checked = false;
         toggleConditionFields('cc', false);
-        ccAddressInput.value = '';
-    }
-
-    // 填充正文条件
-    if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
-        bodyConditionToggle.checked = true;
-        toggleConditionFields('body', true);
-        bodyConditionType.value = rule.conditions.body.type || 'include';
-        bodyCaseSensitiveCheckbox.checked = rule.conditions.body.caseSensitive || false;
-        populateKeywordsContainer(bodyKeywordsContainer, rule.conditions.body.keywords);
-    } else {
-        bodyConditionToggle.checked = false;
         toggleConditionFields('body', false);
-        populateKeywordsContainer(bodyKeywordsContainer, []); // 默认添加一个空输入框
+
+    } else { // 'normal' or undefined (legacy rules)
+        normalConditionsContainer.style.display = 'block';
+        aiConditionsContainer.style.display = 'none';
+        userAiPromptInput.value = ''; // Clear AI prompt for normal mode
+        systemPromptDisplay.value = DEFAULT_SYSTEM_PROMPT; // Reset system prompt display
+
+        // 填充主题条件
+        if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
+            subjectConditionToggle.checked = true;
+            toggleConditionFields('subject', true);
+            subjectConditionType.value = rule.conditions.subject.type || 'include';
+            subjectCaseSensitiveCheckbox.checked = rule.conditions.subject.caseSensitive || false;
+            populateKeywordsContainer(subjectKeywordsContainer, rule.conditions.subject.keywords);
+        } else {
+            subjectConditionToggle.checked = false;
+            toggleConditionFields('subject', false);
+            populateKeywordsContainer(subjectKeywordsContainer, []); // 默认添加一个空输入框
+        }
+
+        // 填充发件人条件
+        if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
+            senderConditionToggle.checked = true;
+            toggleConditionFields('sender', true);
+            senderConditionType.value = rule.conditions.sender.type || 'include';
+            senderAddressInput.value = rule.conditions.sender.address || '';
+            senderCaseSensitiveCheckbox.checked = rule.conditions.sender.caseSensitive || false;
+        } else {
+            senderConditionToggle.checked = false;
+            toggleConditionFields('sender', false);
+            senderAddressInput.value = '';
+        }
+
+        // 填充收件人条件
+        if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
+            recipientConditionToggle.checked = true;
+            toggleConditionFields('recipient', true);
+            recipientConditionType.value = rule.conditions.recipient.type || 'include';
+            recipientAddressInput.value = rule.conditions.recipient.address || '';
+            recipientCaseSensitiveCheckbox.checked = rule.conditions.recipient.caseSensitive || false;
+        } else {
+            recipientConditionToggle.checked = false;
+            toggleConditionFields('recipient', false);
+            recipientAddressInput.value = '';
+        }
+
+        // 填充抄送条件
+        if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
+            ccConditionToggle.checked = true;
+            toggleConditionFields('cc', true);
+            ccConditionType.value = rule.conditions.cc.type || 'include';
+            ccAddressInput.value = rule.conditions.cc.address || '';
+            ccCaseSensitiveCheckbox.checked = rule.conditions.cc.caseSensitive || false;
+        } else {
+            ccConditionToggle.checked = false;
+            toggleConditionFields('cc', false);
+            ccAddressInput.value = '';
+        }
+
+        // 填充正文条件
+        if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
+            bodyConditionToggle.checked = true;
+            toggleConditionFields('body', true);
+            bodyConditionType.value = rule.conditions.body.type || 'include';
+            bodyCaseSensitiveCheckbox.checked = rule.conditions.body.caseSensitive || false;
+            populateKeywordsContainer(bodyKeywordsContainer, rule.conditions.body.keywords);
+        } else {
+            bodyConditionToggle.checked = false;
+            toggleConditionFields('body', false);
+            populateKeywordsContainer(bodyKeywordsContainer, []); // 默认添加一个空输入框
+        }
     }
 
     // 填充操作
@@ -916,63 +1003,76 @@ function showRuleDetail(rule) {
     detailConditions.innerHTML = '';
     detailActions.innerHTML = '';
 
-    // 条件详情
-    if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
-        const keywords = rule.conditions.subject.keywords || [];
-        let keywordDisplay = '';
-        
-        if (Array.isArray(keywords) && keywords.length > 0) {
-            if (typeof keywords[0] === 'string') {
-                // 兼容旧格式
-                keywordDisplay = keywords.join(', ');
-            } else {
-                // 新格式：显示关键字和逻辑连接符
-                keywordDisplay = keywords.map((item, index) => {
-                    let result = `"${item.keyword}"`;
-                    if (index < keywords.length - 1 && item.logic) {
-                        result += ` ${item.logic === 'or' ? '或' : '且'} `;
-                    }
-                    return result;
-                }).join('');
-            }
+    const conditionMode = rule.conditionMode || 'normal';
+
+    if (conditionMode === 'ai') {
+        if (rule.aiPrompt) {
+            detailConditions.innerHTML += `<p><strong>条件类型:</strong> AI判断</p>`;
+            detailConditions.innerHTML += `<p><strong>内置系统 Prompt:</strong> <pre style="white-space: pre-wrap; background-color: #f5f5f5; padding: 5px; border-radius: 3px;">${rule.aiPrompt.system}</pre></p>`;
+            detailConditions.innerHTML += `<p><strong>用户 Prompt:</strong> <pre style="white-space: pre-wrap; background-color: #f5f5f5; padding: 5px; border-radius: 3px;">${rule.aiPrompt.user}</pre></p>`;
+        } else {
+            detailConditions.innerHTML += `<p><strong>条件类型:</strong> AI判断 (配置不完整)</p>`;
         }
-        
-        detailConditions.innerHTML += `<p><strong>主题:</strong> ${rule.conditions.subject.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.subject.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-    }
-
-    if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
-        detailConditions.innerHTML += `<p><strong>发件人:</strong> ${rule.conditions.sender.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.sender.address}${rule.conditions.sender.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-    }
-
-    if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
-        detailConditions.innerHTML += `<p><strong>收件人:</strong> ${rule.conditions.recipient.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.recipient.address}${rule.conditions.recipient.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-    }
-
-    if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
-        detailConditions.innerHTML += `<p><strong>抄送:</strong> ${rule.conditions.cc.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.cc.address}${rule.conditions.cc.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-    }
-
-    if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
-        const keywords = rule.conditions.body.keywords || [];
-        let keywordDisplay = '';
-        
-        if (Array.isArray(keywords) && keywords.length > 0) {
-            if (typeof keywords[0] === 'string') {
-                // 兼容旧格式
-                keywordDisplay = keywords.join(', ');
-            } else {
-                // 新格式：显示关键字和逻辑连接符
-                keywordDisplay = keywords.map((item, index) => {
-                    let result = `"${item.keyword}"`;
-                    if (index < keywords.length - 1 && item.logic) {
-                        result += ` ${item.logic === 'or' ? '或' : '且'} `;
-                    }
-                    return result;
-                }).join('');
+    } else {
+        detailConditions.innerHTML += `<p><strong>条件类型:</strong> 普通条件</p>`;
+        // 条件详情 (Normal conditions)
+        if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
+            const keywords = rule.conditions.subject.keywords || [];
+            let keywordDisplay = '';
+            
+            if (Array.isArray(keywords) && keywords.length > 0) {
+                if (typeof keywords[0] === 'string') {
+                    // 兼容旧格式
+                    keywordDisplay = keywords.join(', ');
+                } else {
+                    // 新格式：显示关键字和逻辑连接符
+                    keywordDisplay = keywords.map((item, index) => {
+                        let result = `"${item.keyword}"`;
+                        if (index < keywords.length - 1 && item.logic) {
+                            result += ` ${item.logic === 'or' ? '或' : '且'} `;
+                        }
+                        return result;
+                    }).join('');
+                }
             }
+            
+            detailConditions.innerHTML += `<p><strong>主题:</strong> ${rule.conditions.subject.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.subject.caseSensitive ? ' (区分大小写)' : ''}</p>`;
         }
-        
-        detailConditions.innerHTML += `<p><strong>正文内容:</strong> ${rule.conditions.body.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.body.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+
+        if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
+            detailConditions.innerHTML += `<p><strong>发件人:</strong> ${rule.conditions.sender.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.sender.address}${rule.conditions.sender.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+        }
+
+        if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
+            detailConditions.innerHTML += `<p><strong>收件人:</strong> ${rule.conditions.recipient.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.recipient.address}${rule.conditions.recipient.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+        }
+
+        if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
+            detailConditions.innerHTML += `<p><strong>抄送:</strong> ${rule.conditions.cc.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.cc.address}${rule.conditions.cc.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+        }
+
+        if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
+            const keywords = rule.conditions.body.keywords || [];
+            let keywordDisplay = '';
+            
+            if (Array.isArray(keywords) && keywords.length > 0) {
+                if (typeof keywords[0] === 'string') {
+                    // 兼容旧格式
+                    keywordDisplay = keywords.join(', ');
+                } else {
+                    // 新格式：显示关键字和逻辑连接符
+                    keywordDisplay = keywords.map((item, index) => {
+                        let result = `"${item.keyword}"`;
+                        if (index < keywords.length - 1 && item.logic) {
+                            result += ` ${item.logic === 'or' ? '或' : '且'} `;
+                        }
+                        return result;
+                    }).join('');
+                }
+            }
+            
+            detailConditions.innerHTML += `<p><strong>正文内容:</strong> ${rule.conditions.body.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.body.caseSensitive ? ' (区分大小写)' : ''}</p>`;
+        }
     }
 
     // 操作详情
@@ -1121,31 +1221,143 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Options页面初始化开始...');
     
     try {
-        // 直接从存储读取标签和文件夹数据，不通过 Background Script
-        const storageResult = await chrome.storage.local.get(['aliMailTags', 'aliMailFolders', 'aliMailRules']);
+        const storageResult = await chrome.storage.local.get([
+            'aliMailTags', 'aliMailFolders', 'aliMailRules', 'llmApiConfigs' // Changed from geminiAiConfig
+        ]);
         
         console.log('从存储直接读取的数据:', storageResult);
         
-        // 获取标签和文件夹数据
         availableTags = storageResult.aliMailTags || {};
         availableFolders = storageResult.aliMailFolders || {};
-        
-        console.log('成功获取数据:', { tags: availableTags, folders: availableFolders });
         
         if (Object.keys(availableTags).length === 0 && Object.keys(availableFolders).length === 0) {
             console.warn("提示：请确保阿里邮箱页面已打开并登录，然后刷新此页面。");
         }
-        
         populateDropdowns();
 
-        // 直接从存储读取规则数据
         const rules = storageResult.aliMailRules || [];
-        console.log('从存储读取的规则:', rules);
-        
-        // 渲染规则列表
         await renderRules();
+
+        // 加载LLM API配置
+        const llmConfigs = storageResult.llmApiConfigs || { preferredProvider: 'google', providers: { google: {}, openai: {}, anthropic: {} } };
+        const googleConfig = llmConfigs.providers.google || {};
+        // const openaiConfig = llmConfigs.providers.openai || {}; // For future use
+        // const anthropicConfig = llmConfigs.providers.anthropic || {}; // For future use
+
+        document.getElementById('googleApiKey').value = googleConfig.apiKey || '';
+        document.getElementById('googleModelSelect').value = googleConfig.model || 'gemini-1.5-flash';
+        // Populate OpenAI and Anthropic fields when implemented
+        // document.getElementById('openaiApiKey').value = openaiConfig.apiKey || '';
+        // document.getElementById('openaiModelSelect').value = openaiConfig.model || '';
+        // document.getElementById('anthropicApiKey').value = anthropicConfig.apiKey || '';
+        // document.getElementById('anthropicModelSelect').value = anthropicConfig.model || '';
+
+        const preferredProvider = llmConfigs.preferredProvider || 'google';
+        const preferredRadio = document.querySelector(`input[name="preferredApi"][value="${preferredProvider}"]`);
+        if (preferredRadio) {
+            preferredRadio.checked = true;
+        }
+        
         console.log('Options页面初始化完成');
     } catch (error) {
         console.error('Options页面初始化时出错:', error);
     }
+});
+
+// 保存LLM API配置 (was saveAiConfigBtn)
+document.getElementById('saveLlmApiConfigBtn').addEventListener('click', async () => {
+    const googleApiKey = document.getElementById('googleApiKey').value.trim();
+    const googleModel = document.getElementById('googleModelSelect').value;
+    // const openaiApiKey = document.getElementById('openaiApiKey').value.trim(); // For future use
+    // const openaiModel = document.getElementById('openaiModelSelect').value; // For future use
+    // const anthropicApiKey = document.getElementById('anthropicApiKey').value.trim(); // For future use
+    // const anthropicModel = document.getElementById('anthropicModelSelect').value; // For future use
+
+    const preferredProviderRadio = document.querySelector('input[name="preferredApi"]:checked');
+    const preferredProvider = preferredProviderRadio ? preferredProviderRadio.value : 'google'; // Default to google if somehow none selected
+
+    const statusElement = document.getElementById('llmConfigStatus'); // was aiConfigStatus
+
+    // Basic validation for the currently active provider (Google)
+    if (preferredProvider === 'google' && !googleApiKey) {
+        alert('请输入 Google API Key。');
+        statusElement.textContent = '保存失败：Google API Key 不能为空。';
+        statusElement.style.color = 'red';
+        return;
+    }
+    // Add similar validations for OpenAI and Anthropic when they are implemented
+
+    const llmApiConfigs = {
+        preferredProvider: preferredProvider,
+        providers: {
+            google: {
+                apiKey: googleApiKey,
+                model: googleModel || 'gemini-1.5-flash'
+            },
+            openai: {
+                // apiKey: openaiApiKey, // For future use
+                // model: openaiModel    // For future use
+            },
+            anthropic: {
+                // apiKey: anthropicApiKey, // For future use
+                // model: anthropicModel   // For future use
+            }
+        }
+    };
+
+    try {
+        await chrome.storage.local.set({ llmApiConfigs: llmApiConfigs }); // Changed key name
+        console.log('[Options]: LLM API 配置已保存:', llmApiConfigs);
+        statusElement.textContent = 'LLM API 配置已保存！';
+        statusElement.style.color = 'green';
+        setTimeout(() => { statusElement.textContent = ''; }, 3000);
+    } catch (error) {
+        console.error('[Options]: 保存 LLM API 配置失败:', error);
+        statusElement.textContent = '保存 LLM API 配置失败: ' + error.message;
+        statusElement.style.color = 'red';
+    }
+});
+
+// Function to move a rule up or down
+async function moveRule(ruleId, direction) {
+    try {
+        const result = await chrome.storage.local.get('aliMailRules');
+        let rules = result.aliMailRules || [];
+        
+        const ruleIndex = rules.findIndex(r => r.id === ruleId);
+        if (ruleIndex === -1) {
+            console.error('Rule not found for moving:', ruleId);
+            alert('操作失败：未找到规则。');
+            return;
+        }
+
+        if (direction === 'up' && ruleIndex > 0) {
+            [rules[ruleIndex - 1], rules[ruleIndex]] = [rules[ruleIndex], rules[ruleIndex - 1]];
+        } else if (direction === 'down' && ruleIndex < rules.length - 1) {
+            [rules[ruleIndex + 1], rules[ruleIndex]] = [rules[ruleIndex], rules[ruleIndex + 1]];
+        } else {
+            // Already at top or bottom, or invalid direction
+            return; 
+        }
+
+        await chrome.storage.local.set({ aliMailRules: rules });
+        await renderRules(); // Re-render the list to reflect the new order
+    } catch (error) {
+        console.error('Error moving rule:', error);
+        alert('移动规则时出错: ' + error.message);
+    }
+}
+
+// Event listeners for condition mode radio buttons
+conditionModeRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        if (e.target.value === 'ai') {
+            normalConditionsContainer.style.display = 'none';
+            aiConditionsContainer.style.display = 'block';
+            systemPromptDisplay.value = DEFAULT_SYSTEM_PROMPT; // Ensure it's set when switching
+        } else {
+            normalConditionsContainer.style.display = 'block';
+            aiConditionsContainer.style.display = 'none';
+        }
+    });
 });
