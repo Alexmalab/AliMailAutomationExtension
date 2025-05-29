@@ -1,0 +1,41 @@
+// TEMPORARY background.js for testing
+console.log("[Background TEMP]: Script start.");
+
+try {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        console.log("[Background TEMP onMessage]: Message received:", message);
+
+        if (message.action === "pingFromOptions") {
+            console.log("[Background TEMP onMessage]: pingFromOptions received. Sender:", sender);
+            sendResponse({ ack: "pong from temp listener", source: message.source });
+            return false; // Sync for ping
+        } else if (message.action === "manualExecuteRules") {
+            console.log("[Background TEMP onMessage]: manualExecuteRules received.selectedRuleIds:", message.selectedRuleIds, "Sender:", sender);
+            // Simulate async work
+            setTimeout(() => {
+                sendResponse({ success: true, message: "Temp manualExecuteRules response", processedMailCount: 0, totalMailCountInScope: 0, actionsTakenCounts: {} });
+            }, 100);
+            return true; // Async for this
+        } else {
+            console.warn("[Background TEMP onMessage]: Unknown action:", message.action);
+            // sendResponse({error: "Unknown action"}); // Optional: respond for unknown actions
+            // return false;
+        }
+        // If an action isn't explicitly handled and needs async, ensure `return true` is used,
+        // or ensure it doesn't try to send a response later if it doesn't return true.
+    });
+    console.log("[Background TEMP]: onMessage listener ADDED.");
+} catch (e) {
+    console.error("[Background TEMP]: Error ADDING onMessage listener:", e);
+}
+
+// Keep other essential startup listeners if they are simple and unlikely to fail,
+// like chrome.runtime.onInstalled or chrome.action.onClicked,
+// but temporarily comment out complex ones or functions like `loadRules()`
+// if they are called at global scope.
+
+// Example: Comment out initial loadRules if it's complex
+// loadRules();
+// setTimeout(testKeywordEngine, 1000); // Also comment out tests for now
+
+console.log("[Background TEMP]: Script end.");

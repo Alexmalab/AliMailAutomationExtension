@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (tabs.length === 0) {
                 statusText.textContent = '请先打开阿里邮箱页面';
+                manualRunBtn.disabled = false;
+                manualRunBtn.textContent = '手动执行规则';
                 return;
             }
 
@@ -30,7 +32,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (response && response.success) {
-                statusText.textContent = `规则执行完成，处理了 ${response.processedCount || 0} 封邮件`;
+                let message = `完成! 处理: ${response.processedMailCount || 0}/${response.totalMailCountInScope || 0} 邮件.`;
+                if (response.actionsTakenCounts) {
+                    message += ` 已读: ${response.actionsTakenCounts.markedRead || 0}, 标签: ${response.actionsTakenCounts.labeled || 0}, 移动: ${response.actionsTakenCounts.moved || 0}.`;
+                }
+                if (response.message && response.processedMailCount === 0) {
+                     statusText.textContent = response.message; 
+                } else {
+                    statusText.textContent = message;
+                }
             } else {
                 statusText.textContent = '规则执行失败: ' + (response?.error || '未知错误');
             }

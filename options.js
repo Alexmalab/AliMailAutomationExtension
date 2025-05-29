@@ -731,7 +731,7 @@ async function renderRules() {
 function updateControlButtons() {
     const checkedRules = document.querySelectorAll('.rule-checkbox:checked');
     document.getElementById('deleteSelectedBtn').disabled = checkedRules.length === 0;
-    document.getElementById('manualExecuteBtn').disabled = false;
+    document.getElementById('manualExecuteBtn').disabled = checkedRules.length === 0;
 }
 
 // 全选/全不选
@@ -745,6 +745,21 @@ document.getElementById('selectAllRules').addEventListener('change', (e) => {
 // 手动执行规则
 document.getElementById('manualExecuteBtn').addEventListener('click', async () => {
     const btn = document.getElementById('manualExecuteBtn');
+    const checkedRuleCheckboxes = document.querySelectorAll('#rulesList tbody .rule-checkbox:checked');
+    
+    if (checkedRuleCheckboxes.length === 0) {
+        alert('请至少选择一个规则来执行。');
+        // The button should be disabled by updateControlButtons, but as a safeguard:
+        if (!btn.disabled) { // If somehow it was enabled without checks
+             updateControlButtons(); // Re-evaluate button states
+        }
+        return;
+    }
+
+    const selectedRuleIds = Array.from(checkedRuleCheckboxes).map(cb => {
+        return cb.closest('tr').dataset.ruleId;
+    });
+
     btn.disabled = true;
     btn.textContent = '执行中...';
     
@@ -754,26 +769,48 @@ document.getElementById('manualExecuteBtn').addEventListener('click', async () =
         
         if (tabs.length === 0) {
             alert('请先打开阿里邮箱页面');
+            btn.disabled = false;
+            btn.textContent = '手动执行规则';
             return;
         }
 
         // 向 Background Script 发送手动执行规则的请求
+        console.log(`[Options]: Sending manualExecuteRules for rule IDs: ${selectedRuleIds.join(', ')}`);
         const response = await chrome.runtime.sendMessage({
             action: "manualExecuteRules",
-            tabId: tabs[0].id
+            tabId: tabs[0].id,
+            selectedRuleIds: selectedRuleIds // Send the selected rule IDs
         });
 
+        console.log('[Options]: Raw response from background:', response); // Log the raw response
+
         if (response && response.success) {
-            alert(`规则执行完成！\n处理了 ${response.processedCount} 封邮件（共 ${response.totalCount} 封未读邮件）`);
+            let message = `规则执行完成！\n处理了 ${response.processedMailCount || 0} 封邮件 (共 ${response.totalMailCountInScope || 0} 封相关邮件)。`;
+            if (response.actionsTakenCounts) {
+                message += `\n\n操作统计:\n  - 标记已读: ${response.actionsTakenCounts.markedRead || 0} 封\n  - 应用标签: ${response.actionsTakenCounts.labeled || 0} 封\n  - 移动邮件: ${response.actionsTakenCounts.moved || 0} 封`;
+            }
+            if (response.message && response.processedMailCount === 0) { // Display message from background if any (e.g., no mails, or no rules matched)
+                message = response.message;
+            }
+            alert(message);
         } else {
-            alert('规则执行失败: ' + (response?.error || '未知错误'));
+            // Log the error more verbosely if it's an object
+            let errorDetails = response?.error || '未知错误';
+            if (typeof response?.error === 'object') {
+                errorDetails = JSON.stringify(response.error);
+            }
+            alert('规则执行失败: ' + errorDetails);
+            console.error('[Options]: 规则执行失败, response:', response);
         }
     } catch (error) {
-        console.error('手动执行规则时出错:', error);
+        console.error('[Options]: 手动执行规则时出错 (catch block):', error);
         alert('规则执行失败: ' + error.message);
     } finally {
-        btn.disabled = false;
-        btn.textContent = '手动执行规则';
+        // Re-enable based on current selection, not just blindly
+        updateControlButtons(); 
+        if (!btn.disabled) { // If updateControlButtons re-enabled it
+            btn.textContent = '手动执行规则';
+        }
     }
 });
 

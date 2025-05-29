@@ -1,6 +1,7 @@
 // background.js - Chrome Extension Service Worker
 
 let userRules = []; // 存储用户定义的规则
+const BATCH_SIZE = 50; // Batch size for manual operations
 
 // ===============================================
 // 规则管理
@@ -509,7 +510,7 @@ async function executeRuleActions(rule, mailId, tabId) {
         try {
             const response = await chrome.tabs.sendMessage(tabId, {
                 action: "markRead",
-                mailId: currentMailIdForActions,
+                mailIds: [currentMailIdForActions],
                 isRead: true
             });
             console.log("[Background]: 标记为已读操作结果:", response);
@@ -537,7 +538,7 @@ async function executeRuleActions(rule, mailId, tabId) {
             // 执行移动操作
             const moveResponse = await chrome.tabs.sendMessage(tabId, {
                 action: "moveMail",
-                mailId: currentMailIdForActions,
+                mailIds: [currentMailIdForActions],
                 folderId: folderId
             });
             
@@ -599,71 +600,509 @@ function extractFolderIdFromMailId(mailId) {
 }
 
 /**
+ * 新：确定邮件应执行的操作，但不实际执行。
+ *供 manualExecuteRules 使用。
+ * @param {Object} mailDetails 包含邮件所有相关信息的对象 (mailId, subject, body, sender, recipient, ccRecipients)
+ * @param {Array} rulesToApply 要应用的用户规则列表
+ * @param {Object} tagMap 当前标签名称到ID的映射
+ * @param {Object} folderMap 当前文件夹名称到ID的映射
+ * @returns {Array} 一系列操作对象，例如 [{ type: 'markRead', mailId: '...', isRead: true }, ...]
+ */
+function determineActionsForMail(mailDetails, rulesToApply, tagMap, folderMap) {
+    const determinedActions = [];
+    const { mailId, subject, body, sender, recipient, ccRecipients } = mailDetails;
+
+    for (const rule of rulesToApply) {
+        if (!rule.enabled) {
+            continue;
+        }
+
+        let conditionMet = true;
+
+        // 检查发件人条件
+        if (rule.conditions?.sender?.enabled) {
+            if (!sender) { conditionMet = false; }
+            else { conditionMet = conditionMet && checkAddressCondition(rule.conditions.sender, sender, false); }
+        }
+        // 检查收件人条件
+        if (conditionMet && rule.conditions?.recipient?.enabled) {
+            if (!recipient) { conditionMet = false; }
+            else { conditionMet = conditionMet && checkAddressCondition(rule.conditions.recipient, recipient, true); }
+        }
+        // 检查抄送条件
+        if (conditionMet && rule.conditions?.cc?.enabled) {
+            if (!ccRecipients) { conditionMet = false; }
+            else { conditionMet = conditionMet && checkAddressCondition(rule.conditions.cc, ccRecipients, true); }
+        }
+        // 检查主题条件
+        if (conditionMet && rule.conditions?.subject?.enabled) {
+            conditionMet = conditionMet && checkCondition(rule.conditions.subject, subject);
+        }
+        // 检查正文条件
+        if (conditionMet && rule.conditions?.body?.enabled) {
+            if (!body) { conditionMet = false; } // Body must exist if condition enabled
+            else { conditionMet = conditionMet && checkCondition(rule.conditions.body, body); }
+        }
+
+        if (conditionMet) {
+            console.log(`[Background] (Determine): Rule "${rule.name}" matched mail ${mailId}.`);
+            // 从规则中提取操作
+            if (rule.action) {
+                if (rule.action.markAsRead) {
+                    determinedActions.push({ type: 'markRead', mailId: mailId, isRead: true });
+                }
+                if (rule.action.setLabel) {
+                    const labelsToSet = Array.isArray(rule.action.setLabel) ? rule.action.setLabel : [rule.action.setLabel];
+                    const tagIds = [];
+                    labelsToSet.forEach(labelName => {
+                        if (tagMap[labelName]) {
+                            tagIds.push(tagMap[labelName]);
+                        } else {
+                            console.warn(`[Background] (Determine): Label "${labelName}" not found in tagMap.`);
+                        }
+                    });
+                    if (tagIds.length > 0) {
+                        determinedActions.push({ type: 'applyLabel', mailId: mailId, tagIds: tagIds });
+                    }
+                }
+                if (rule.action.moveToFolder && folderMap[rule.action.moveToFolder]) {
+                    const folderId = folderMap[rule.action.moveToFolder];
+                    determinedActions.push({
+                        type: 'moveMail',
+                        mailId: mailId,
+                        folderId: folderId,
+                        originalUniqueId: extractUniqueId(mailId) // Needed for verification
+                    });
+                }
+                // 注意: 此函数不处理mailId的更改。所有操作都基于初始mailId。
+                // 后续操作，如"标记为已读"，将引用原始mailId。
+            }
+
+            if (rule.action && rule.action.stopProcessing) {
+                console.log(`[Background] (Determine): Rule "${rule.name}" includes "stopProcessing".`);
+                break; // 停止处理此邮件的更多规则
+            }
+        }
+    }
+    return determinedActions;
+}
+
+/**
  * 手动执行规则 - 遍历收件箱未读邮件并应用规则
  * @param {number} tabId 阿里邮箱页面的Tab ID
+ * @param {string[] | undefined} selectedRuleIds 可选的，要执行的特定规则ID数组
  * @returns {Promise<Object>} 执行结果
  */
-async function manualExecuteRules(tabId) {
+async function manualExecuteRules(tabId, selectedRuleIds) {
     console.log(`[Background]: 开始手动执行规则，Tab ID: ${tabId}`);
+    if (selectedRuleIds && selectedRuleIds.length > 0) {
+        console.log(`[Background]: 将只执行选定的规则: ${selectedRuleIds.join(', ')}`);
+    }
     
-    try {
-        // 向 Content Script 请求获取收件箱未读邮件列表
-        const response = await chrome.tabs.sendMessage(tabId, {
-            action: "getInboxUnreadMails"
-        });
+    const actionsTakenCounts = { markedRead: 0, labeled: 0, moved: 0 };
+    let processedMailCount = 0;
+    let mailHeadersToProcess = [];
+    let totalMailInScopeCount = 0; // Total mails matching initial query
 
-        if (!response || !response.success) {
+    const MAIL_PROCESS_LIMIT = 1000; // Max mails to fetch headers for in one go
+    // BATCH_SIZE is already defined globally (e.g., 50) for API calls
+
+    try {
+        // 0. 加载最新规则和映射
+        await loadRules();
+        const storageData = await chrome.storage.local.get(['aliMailTags', 'aliMailFolders']);
+        const currentTags = storageData.aliMailTags || {};
+        const currentFolders = storageData.aliMailFolders || {};
+
+        let rulesToApply = userRules.filter(rule => rule.enabled); // Default to all enabled rules
+        if (selectedRuleIds && selectedRuleIds.length > 0) {
+            const selectedEnabledRules = userRules.filter(rule => selectedRuleIds.includes(rule.id) && rule.enabled);
+            if (selectedEnabledRules.length === 0) {
+                 console.log(`[Background]: 选择的规则均未找到或未启用，未处理任何邮件。`);
+                 return {
+                    success: true,
+                    processedMailCount: 0,
+                    totalUnreadCount: 0, // Compatibility with old response structure
+                    totalMailCountInScope: 0,
+                    actionsTakenCounts: actionsTakenCounts,
+                    message: "选择的规则均未找到或未启用，未处理任何邮件。"
+                };
+            }
+            rulesToApply = selectedEnabledRules;
+        }
+        console.log(`[Background]: 将处理 ${rulesToApply.length} 条规则.`);
+        if (rulesToApply.length === 0) {
             return { 
-                success: false, 
-                error: response?.error || "获取未读邮件列表失败" 
+                success: true, 
+                processedMailCount: 0,
+                totalUnreadCount: 0, // Compatibility
+                totalMailCountInScope: 0,
+                actionsTakenCounts: actionsTakenCounts,
+                message: "没有启用的规则可供执行。"
             };
         }
 
-        const unreadMails = response.mails || [];
-        console.log(`[Background]: 获取到 ${unreadMails.length} 封未读邮件`);
+        // 1. 获取邮件列表 (仅头部信息) - target inbox "2"
+        const mailListResponse = await chrome.tabs.sendMessage(tabId, {
+            action: "queryMailList",
+            folderIds: ["2"], 
+            maxLength: MAIL_PROCESS_LIMIT,
+            offset: 0
+        });
 
-        let processedCount = 0;
-
-        // 遍历每封未读邮件
-        for (const mail of unreadMails) {
-            try {
-                // 获取邮件正文
-                const bodyResponse = await chrome.tabs.sendMessage(tabId, {
-                    action: "fetchMailBody",
-                    mailId: mail.mailId
-                });
-
-                if (bodyResponse && bodyResponse.success && bodyResponse.data && bodyResponse.data.data) {
-                    const mailData = bodyResponse.data.data;
-                    const bodyContent = mailData.htmlBody || mailData.textBody || '';
-                    const subject = mailData.subject || mailData.encSubject || '无主题';
-
-                    // 对这封邮件运行规则引擎
-                    await runRulesEngine(mail.mailId, bodyContent, subject, tabId);
-                    processedCount++;
-                    
-                    console.log(`[Background]: 已处理邮件 ${mail.mailId} (${processedCount}/${unreadMails.length})`);
-                } else {
-                    console.warn(`[Background]: 无法获取邮件 ${mail.mailId} 的正文`);
-                }
-            } catch (error) {
-                console.error(`[Background]: 处理邮件 ${mail.mailId} 时出错:`, error);
-            }
+        if (!mailListResponse || !mailListResponse.success) {
+            return { 
+                success: false, 
+                error: mailListResponse?.error || "获取邮件列表失败 (queryMailList)" 
+            };
         }
 
+        mailHeadersToProcess = mailListResponse.mails || [];
+        totalMailInScopeCount = mailListResponse.totalCount || mailHeadersToProcess.length;
+        console.log(`[Background]: 获取到 ${mailHeadersToProcess.length} 封邮件头进行处理，总计 (API报告): ${totalMailInScopeCount}`);
+
+        if (mailHeadersToProcess.length === 0) {
+            return {
+                success: true,
+                processedMailCount: 0,
+                totalUnreadCount: totalMailInScopeCount, // For popup.js compatibility
+                totalMailCountInScope: totalMailInScopeCount,
+                actionsTakenCounts: actionsTakenCounts,
+                message: "收件箱没有邮件可供处理。"
+            };
+        }
+
+        // 2. 分批处理邮件头
+        for (let i = 0; i < mailHeadersToProcess.length; i += BATCH_SIZE) {
+            const currentChunkMailHeaders = mailHeadersToProcess.slice(i, i + BATCH_SIZE);
+            console.log(`[Background]: 处理邮件批次 ${Math.floor(i / BATCH_SIZE) + 1}, 包含 ${currentChunkMailHeaders.length} 封邮件.`);
+
+            const collectedBatchActions = {
+                markReadMailIds: new Set(),
+                labelsToApply: {}, // key: sortedTagIdsStr, value: { tagIds: [], mailIds: new Set() }
+                movesToPerform: [] // { mailId: '...', folderId: '...', originalUniqueId: '...' }
+            };
+
+            for (const mailHeader of currentChunkMailHeaders) {
+                console.log(`[Background]: 手动执行 - 开始处理邮件 ${mailHeader.mailId}`);
+                processedMailCount++;
+                // Initial details from header
+                let currentMailDetails = {
+                    mailId: mailHeader.mailId,
+                    subject: mailHeader.subject || mailHeader.encSubject || '',
+                    sender: null, // Will be parsed or fetched
+                    body: null,
+                    recipient: null,
+                    ccRecipients: null
+                };
+                
+                // Parse initial sender from mailHeader.from
+                if (mailHeader.from) {
+                     if (typeof mailHeader.from === 'object') {
+                        currentMailDetails.sender = { 
+                            displayName: mailHeader.from.displayName || '', 
+                            email: mailHeader.from.email || '' 
+                        };
+                    } else if (typeof mailHeader.from === 'string') {
+                        const match = mailHeader.from.match(/(.*)<(.*)>/);
+                        if (match && match[1] && match[2]) {
+                            currentMailDetails.sender = { displayName: match[1].trim(), email: match[2].trim() };
+                        } else {
+                            currentMailDetails.sender = { displayName: mailHeader.from, email: '' };
+                        }
+                    }
+                }
+                
+                const actionsForCurrentEmail = await determineActionsForSingleMailManual(
+                    currentMailDetails, // Pass an object that can be augmented
+                    rulesToApply,
+                    tabId,
+                    currentTags,
+                    currentFolders
+                );
+
+                actionsForCurrentEmail.forEach(action => {
+                    if (action.type === 'markRead') {
+                        collectedBatchActions.markReadMailIds.add(action.mailId);
+                    } else if (action.type === 'applyLabel') {
+                        const sortedTagIdsKey = action.tagIds.slice().sort().join(',');
+                        if (!collectedBatchActions.labelsToApply[sortedTagIdsKey]) {
+                            collectedBatchActions.labelsToApply[sortedTagIdsKey] = {
+                                tagIds: action.tagIds,
+                                mailIds: new Set()
+                            };
+                        }
+                        collectedBatchActions.labelsToApply[sortedTagIdsKey].mailIds.add(action.mailId);
+                    } else if (action.type === 'moveMail') {
+                        // Ensure each move action is distinct even if multiple rules move to same folder
+                        // (though stopProcessing should typically prevent this for a single mail)
+                        collectedBatchActions.movesToPerform.push({ 
+                            mailId: action.mailId, 
+                            folderId: action.folderId, 
+                            originalUniqueId: extractUniqueId(action.mailId)
+                        });
+                    }
+                });
+            } // End for each mailHeader in chunk
+
+            // 3. 执行当前批次的收集操作
+            console.log('[Background]: 开始执行当前批次的批量操作...', collectedBatchActions);
+
+            // 3.1 应用标签 (Before move, as mailId doesn't change)
+            for (const key in collectedBatchActions.labelsToApply) {
+                const op = collectedBatchActions.labelsToApply[key];
+                const mailIdsArray = Array.from(op.mailIds);
+                if (mailIdsArray.length > 0) {
+                    console.log(`[Background]: (批量) 应用标签 ${op.tagIds.join(',')} 到 ${mailIdsArray.length} 封邮件.`);
+                    try {
+                        const response = await chrome.tabs.sendMessage(tabId, {
+                            action: "applyLabel",
+                            mailIds: mailIdsArray,
+                            tagIds: op.tagIds
+                        });
+                        if (response && response.success) actionsTakenCounts.labeled += mailIdsArray.length;
+                        else console.warn("[Background]: 批量应用标签失败", response);
+                    } catch (e) { console.error("[Background]: 批量应用标签API调用出错", e); }
+                }
+            }
+            
+            // 3.2 标记为已读 (Before move)
+            const markReadIdsArray = Array.from(collectedBatchActions.markReadMailIds);
+            if (markReadIdsArray.length > 0) {
+                console.log(`[Background]: (批量) 标记 ${markReadIdsArray.length} 封邮件为已读.`);
+                try {
+                    const response = await chrome.tabs.sendMessage(tabId, {
+                        action: "markRead",
+                        mailIds: markReadIdsArray,
+                        isRead: true
+                    });
+                    if (response && response.success) actionsTakenCounts.markedRead += markReadIdsArray.length;
+                    else console.warn("[Background]: 批量标记已读失败", response);
+                } catch (e) { console.error("[Background]: 批量标记已读API调用出错", e); }
+            }
+
+            // 3.3 执行移动 (逐个执行以进行验证, after other ops as mailId might change)
+            // Filter moves to ensure we only move a mailId once if multiple rules tried to move it (stopProcessing should prevent this mostly)
+            const uniqueMoves = [];
+            const movedMailIdsInBatch = new Set();
+            for (const moveAction of collectedBatchActions.movesToPerform) {
+                if (!movedMailIdsInBatch.has(moveAction.mailId)) {
+                    uniqueMoves.push(moveAction);
+                    movedMailIdsInBatch.add(moveAction.mailId);
+                }
+            }
+
+            for (const moveAction of uniqueMoves) {
+                console.log(`[Background]: (批量) 移动邮件 ${moveAction.mailId} 到文件夹 ${moveAction.folderId}`);
+                try {
+                    const moveResponse = await chrome.tabs.sendMessage(tabId, {
+                        action: "moveMail",
+                        mailIds: [moveAction.mailId],
+                        folderId: moveAction.folderId
+                    });
+                    if (moveResponse && moveResponse.success) {
+                        const verifyResponse = await chrome.tabs.sendMessage(tabId, {
+                            action: "verifyMailMove",
+                            originalUniqueId: moveAction.originalUniqueId,
+                            targetFolderId: moveAction.folderId,
+                            maxResults: 5 
+                        });
+                        if (verifyResponse && verifyResponse.success && verifyResponse.found) {
+                            actionsTakenCounts.moved++;
+                            console.log(`[Background]: 邮件 ${moveAction.mailId} 移动并验证成功 (新ID: ${verifyResponse.newMailId})`);
+                        } else {
+                            console.warn(`[Background]: 移动邮件 ${moveAction.mailId} 后验证失败.`, verifyResponse);
+                        }
+                    } else {
+                         console.warn(`[Background]: 移动邮件 ${moveAction.mailId} 失败.`, moveResponse);
+                    }
+                } catch (e) {
+                    console.error(`[Background]: 移动邮件 ${moveAction.mailId} API调用出错`, e);
+                }
+            }
+        } // End for each chunk
+
+        console.log('[Background]: 手动规则执行完成。');
         return { 
             success: true, 
-            processedCount: processedCount,
-            totalCount: unreadMails.length
+            processedMailCount: processedMailCount,
+            totalUnreadCount: totalMailInScopeCount, // For popup.js compatibility
+            totalMailCountInScope: totalMailInScopeCount,
+            actionsTakenCounts: actionsTakenCounts
         };
 
     } catch (error) {
         console.error("[Background]: 手动执行规则时出错:", error);
+        // Ensure error object is serializable for sendResponse
+        const errorResponse = { 
+            message: error.message, 
+            name: error.name, 
+            stack: error.stack 
+        };
         return { 
             success: false, 
-            error: error.message 
+            error: errorResponse,
+            processedMailCount: processedMailCount,
+            totalUnreadCount: totalMailInScopeCount, // Compatibility
+            totalMailCountInScope: totalMailInScopeCount,
+            actionsTakenCounts: actionsTakenCounts
         };
     }
+}
+
+/**
+ * Helper for manualExecuteRules: Determines actions for a single mail item, fetching details on demand.
+ * @param {Object} mailDetailsSoFar - Object containing initial mailId, subject, sender. Will be augmented with body, recipient, cc if fetched.
+ * @param {Array} rulesToApply - The list of rules to check against this email.
+ * @param {number} tabId - The ID of the tab to send messages for fetching.
+ * @param {Object} tagMap - Current tag name to ID map.
+ * @param {Object} folderMap - Current folder name to ID map.
+ * @returns {Promise<Array>} A promise that resolves to an array of action objects.
+ */
+async function determineActionsForSingleMailManual(mailDetailsSoFar, rulesToApply, tabId, tagMap, folderMap) {
+    const determinedActions = [];
+    let fetchedFullDetails = false; // Track if we've fetched full details for this mail
+
+    for (const rule of rulesToApply) {
+        if (!rule.enabled) continue; // Should have been pre-filtered, but as a safeguard
+
+        console.log(`[Background] (ManualSingle): Checking rule "${rule.name}" for mail ${mailDetailsSoFar.mailId}`);
+        let conditionMet = true;
+        let requiresFetch = false;
+
+        // Check conditions and determine if a fetch is needed
+        if (rule.conditions?.sender?.enabled) {
+            if (!mailDetailsSoFar.sender) { // Sender might be missing or sparsely populated from header
+                 // Sender is critical and simple, often available in header or first fetch.
+                 // If rule needs sender and it's still null, it's an issue.
+                 // For now, assume if it's null, it might need a fetch if other conditions also trigger it.
+                 // Or, we can decide that if sender is null, sender condition implicitly fails or triggers fetch.
+                 // Let's try to fetch if any rich data is needed.
+                requiresFetch = true; 
+            }
+        }
+        if (rule.conditions?.recipient?.enabled && !mailDetailsSoFar.recipient) requiresFetch = true;
+        if (rule.conditions?.cc?.enabled && !mailDetailsSoFar.ccRecipients) requiresFetch = true;
+        if (rule.conditions?.body?.enabled && !mailDetailsSoFar.body) requiresFetch = true;
+        
+        // Perform fetch if needed and not already done
+        if (requiresFetch && !fetchedFullDetails) {
+            console.log(`[Background] (ManualSingle): Rule "${rule.name}" requires full details for ${mailDetailsSoFar.mailId}. Fetching...`);
+            try {
+                const fullDetailsResponse = await chrome.tabs.sendMessage(tabId, {
+                    action: "fetchMailBody",
+                    mailId: mailDetailsSoFar.mailId
+                });
+
+                if (fullDetailsResponse && fullDetailsResponse.success && fullDetailsResponse.data) {
+                    const apiData = fullDetailsResponse.data.data; // Actual mail content from loadMail.txt
+                    
+                    mailDetailsSoFar.subject = mailDetailsSoFar.subject || apiData.subject || apiData.encSubject || ''; // Update if it was empty
+                    mailDetailsSoFar.body = apiData.body || apiData.htmlBody || apiData.textBody || ''; // Prefer htmlBody if available
+                    
+                    // Update sender (more reliable from full fetch)
+                    if (apiData.from) {
+                        if (typeof apiData.from === 'object') {
+                            mailDetailsSoFar.sender = { displayName: apiData.from.displayName || '', email: apiData.from.email || '' };
+                        } else if (typeof apiData.from === 'string') {
+                             const match = apiData.from.match(/(.*)<(.*)>/);
+                             if (match && match[1] && match[2]) {
+                                mailDetailsSoFar.sender = { displayName: match[1].trim(), email: match[2].trim() };
+                             } else {
+                                mailDetailsSoFar.sender = { displayName: apiData.from, email: '' };
+                             }
+                        }
+                    } else if (fullDetailsResponse.sender && !mailDetailsSoFar.sender) { // Fallback to parsed sender by content script
+                        mailDetailsSoFar.sender = fullDetailsResponse.sender;
+                    }
+
+                    // Update recipients (from parsed fields in fetchMailBody response)
+                    mailDetailsSoFar.recipient = fullDetailsResponse.recipient || []; // Expects array
+                    mailDetailsSoFar.ccRecipients = fullDetailsResponse.ccRecipients || []; // Expects array
+                    
+                    fetchedFullDetails = true;
+                    console.log(`[Background] (ManualSingle): Full details fetched for ${mailDetailsSoFar.mailId}. Body length: ${mailDetailsSoFar.body?.length}`);
+                } else {
+                    console.warn(`[Background] (ManualSingle): Failed to fetch full details for ${mailDetailsSoFar.mailId}. Rule "${rule.name}" might not match if it depends on fetched data.`);
+                    // If fetch fails, conditions requiring fetched data might implicitly fail.
+                }
+            } catch (error) {
+                console.error(`[Background] (ManualSingle): Error fetching full details for ${mailDetailsSoFar.mailId}:`, error);
+            }
+        }
+
+        // Now, evaluate all conditions with potentially updated mailDetailsSoFar
+        if (rule.conditions?.sender?.enabled) {
+            if (!mailDetailsSoFar.sender) { conditionMet = false; }
+            else { conditionMet = conditionMet && checkAddressCondition(rule.conditions.sender, mailDetailsSoFar.sender, false); }
+        }
+        if (conditionMet && rule.conditions?.recipient?.enabled) {
+            if (!mailDetailsSoFar.recipient || mailDetailsSoFar.recipient.length === 0) { // Check if array is empty too
+                 // If recipient info was required, fetched, but still unavailable/empty, condition fails
+                conditionMet = fetchedFullDetails && (!mailDetailsSoFar.recipient || mailDetailsSoFar.recipient.length === 0) ? false : conditionMet;
+                if (!fetchedFullDetails && !mailDetailsSoFar.recipient) conditionMet = false; // If not fetched and needed
+            } else { 
+                conditionMet = conditionMet && checkAddressCondition(rule.conditions.recipient, mailDetailsSoFar.recipient, true); 
+            }
+        }
+        if (conditionMet && rule.conditions?.cc?.enabled) {
+            if (!mailDetailsSoFar.ccRecipients || mailDetailsSoFar.ccRecipients.length === 0) {
+                conditionMet = fetchedFullDetails && (!mailDetailsSoFar.ccRecipients || mailDetailsSoFar.ccRecipients.length === 0) ? false : conditionMet;
+                if (!fetchedFullDetails && !mailDetailsSoFar.ccRecipients) conditionMet = false;
+            } else { 
+                conditionMet = conditionMet && checkAddressCondition(rule.conditions.cc, mailDetailsSoFar.ccRecipients, true); 
+            }
+        }
+        if (conditionMet && rule.conditions?.subject?.enabled) {
+            conditionMet = conditionMet && checkCondition(rule.conditions.subject, mailDetailsSoFar.subject);
+        }
+        if (conditionMet && rule.conditions?.body?.enabled) {
+            if (!mailDetailsSoFar.body) { // Body must exist if condition enabled and was fetched or attempted
+                conditionMet = false; 
+            } else { 
+                conditionMet = conditionMet && checkCondition(rule.conditions.body, mailDetailsSoFar.body); 
+            }
+        }
+
+        if (conditionMet) {
+            console.log(`[Background] (ManualSingle): Rule "${rule.name}" matched mail ${mailDetailsSoFar.mailId}.`);
+            if (rule.action) {
+                if (rule.action.markAsRead) {
+                    determinedActions.push({ type: 'markRead', mailId: mailDetailsSoFar.mailId, isRead: true });
+                }
+                if (rule.action.setLabel) {
+                    const labelsToSet = Array.isArray(rule.action.setLabel) ? rule.action.setLabel : [rule.action.setLabel];
+                    const tagIds = [];
+                    labelsToSet.forEach(labelName => {
+                        if (tagMap[labelName]) {
+                            tagIds.push(tagMap[labelName]);
+                        } else {
+                            console.warn(`[Background] (ManualSingle): Label "${labelName}" not found in tagMap.`);
+                        }
+                    });
+                    if (tagIds.length > 0) {
+                        determinedActions.push({ type: 'applyLabel', mailId: mailDetailsSoFar.mailId, tagIds: tagIds });
+                    }
+                }
+                if (rule.action.moveToFolder && folderMap[rule.action.moveToFolder]) {
+                    const folderId = folderMap[rule.action.moveToFolder];
+                    determinedActions.push({
+                        type: 'moveMail',
+                        mailId: mailDetailsSoFar.mailId,
+                        folderId: folderId
+                        // originalUniqueId will be added when batching moves
+                    });
+                }
+                // NOTE: 'delete' action type is not handled here yet, but could be added.
+            }
+
+            if (rule.action && rule.action.stopProcessing) {
+                console.log(`[Background] (ManualSingle): Rule "${rule.name}" includes "stopProcessing" for mail ${mailDetailsSoFar.mailId}.`);
+                break; 
+            }
+        }
+    }
+    return determinedActions;
 }
 
 // ===============================================
@@ -720,7 +1159,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true; // 异步响应
         } else if (message.action === "manualExecuteRules") {
             // 手动执行规则 - 遍历收件箱未读邮件
-            manualExecuteRules(message.tabId).then(sendResponse);
+            // 现在传递 selectedRuleIds (如果存在)
+            manualExecuteRules(message.tabId, message.selectedRuleIds).then(sendResponse);
             return true; // 异步响应
         }
     }
@@ -768,7 +1208,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.sendMessage(sender.tab.id, {
             action: "queryMailList",
             folderIds: [folderId],
-            unreadOnly: false,
             maxLength: 10,  // 只查询最新的10封邮件
             offset: 0
         }).then(response => {

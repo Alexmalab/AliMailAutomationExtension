@@ -240,68 +240,63 @@ async function fetchMailBodyFromBackground(mailId) {
  * @param {string[]} tagIds 标签ID列表
  */
 async function applyLabelToMailFromBackground(mailIds, tagIds) {
-    console.log(`[Content Script]: 收到Background Script请求，为邮件 ${mailIds} 打标签 ${tagIds}...`);
+    console.log(`[Content Script]: 收到Background Script请求，为邮件 ${mailIds.join(',')} 打标签 ${tagIds.join(',')}...`);
     try {
         await applyLabelToMail(mailIds, tagIds);
         return { success: true, mailIds: mailIds, tagIds: tagIds };
     } catch (e) {
-        console.error(`[Content Script]: 为邮件 ${mailIds} 打标签失败:`, e);
+        console.error(`[Content Script]: 为邮件 ${mailIds.join(',')} 打标签失败:`, e);
         return { success: false, mailIds: mailIds, tagIds: tagIds, error: e.message };
     }
 }
 
 /**
  * 移动邮件到文件夹。由 Background Script 调用。
- * @param {string} mailId 邮件ID
+ * @param {string[]} mailIds 邮件ID列表
  * @param {string} folderId 文件夹ID
  */
-async function moveMailToFolderFromBackground(mailId, folderId) {
-    console.log(`[Content Script]: 收到Background Script请求，移动邮件 ${mailId} 到文件夹 ${folderId}...`);
+async function moveMailToFolderFromBackground(mailIds, folderId) {
+    console.log(`[Content Script]: 收到Background Script请求，移动邮件 ${mailIds.join(',')} 到文件夹 ${folderId}...`);
     try {
-        await moveMailToFolder(mailId, folderId);
-        return { success: true, mailId: mailId, folderId: folderId };
+        await moveMailToFolder(mailIds, folderId);
+        return { success: true, mailIds: mailIds, folderId: folderId };
     } catch (e) {
-        console.error(`[Content Script]: 移动邮件 ${mailId} 到文件夹失败:`, e);
-        return { success: false, mailId: mailId, folderId: folderId, error: e.message };
+        console.error(`[Content Script]: 移动邮件 ${mailIds.join(',')} 到文件夹失败:`, e);
+        return { success: false, mailIds: mailIds, folderId: folderId, error: e.message };
     }
 }
 
 /**
  * 标记邮件为已读/未读。由 Background Script 调用。
- * @param {string} mailId 邮件ID
+ * @param {string[]} mailIds 邮件ID列表
  * @param {boolean} isRead 是否已读
  */
-async function markMailAsReadFromBackground(mailId, isRead = true) {
-    console.log(`[Content Script]: 收到Background Script请求，标记邮件 ${mailId} 为 ${isRead ? '已读' : '未读'}...`);
+async function markMailAsReadFromBackground(mailIds, isRead = true) {
+    console.log(`[Content Script]: 收到Background Script请求，标记邮件 ${mailIds.join(',')} 为 ${isRead ? '已读' : '未读'}...`);
     try {
-        await markMailAsRead(mailId, isRead);
-        return { success: true, mailId: mailId, isRead: isRead };
+        await markMailAsRead(mailIds, isRead);
+        return { success: true, mailIds: mailIds, isRead: isRead };
     } catch (e) {
-        console.error(`[Content Script]: 标记邮件 ${mailId} 状态失败:`, e);
-        return { success: false, mailId: mailId, isRead: isRead, error: e.message };
+        console.error(`[Content Script]: 标记邮件 ${mailIds.join(',')} 状态失败:`, e);
+        return { success: false, mailIds: mailIds, isRead: isRead, error: e.message };
     }
 }
 
 /**
  * 通用的邮件列表查询函数。由 Background Script 调用。
  * @param {string[]} folderIds 文件夹ID列表，默认为收件箱["2"]
- * @param {boolean} unreadOnly 是否只查询未读邮件，默认为false
  * @param {number} maxLength 最大返回数量，默认为100
  * @param {number} offset 偏移量，默认为0
  */
-async function queryMailListFromBackground(folderIds = ["2"], unreadOnly = false, maxLength = 100, offset = 0) {
+async function queryMailListFromBackground(folderIds = ["2"], maxLength = 100, offset = 0) {
     const folderNames = folderIds.join(',');
-    console.log(`[Content Script]: 查询邮件列表 - 文件夹: [${folderNames}], 仅未读: ${unreadOnly}, 数量: ${maxLength}`);
+    console.log(`[Content Script]: 查询邮件列表 - 文件夹: [${folderNames}], 数量: ${maxLength}`);
     
     try {
         const queryParams = {
             folderIds: folderIds
         };
         
-        // 如果只查询未读邮件，添加unread参数
-        if (unreadOnly) {
-            queryParams.unread = true;
-        }
         
         const result = await aliMailApiRequest('mail/queryMailList.txt', {
             query: JSON.stringify(queryParams),
@@ -316,8 +311,7 @@ async function queryMailListFromBackground(folderIds = ["2"], unreadOnly = false
                 success: true, 
                 mails: result.dataList,
                 totalCount: result.totalCount || result.dataList.length,
-                folderIds: folderIds,
-                unreadOnly: unreadOnly
+                folderIds: folderIds
             };
         } else {
             console.log(`[Content Script]: 文件夹 [${folderNames}] 查询结果为空`);
@@ -325,8 +319,7 @@ async function queryMailListFromBackground(folderIds = ["2"], unreadOnly = false
                 success: true, 
                 mails: [], 
                 totalCount: 0,
-                folderIds: folderIds,
-                unreadOnly: unreadOnly
+                folderIds: folderIds
             };
         }
     } catch (e) {
@@ -340,7 +333,7 @@ async function queryMailListFromBackground(folderIds = ["2"], unreadOnly = false
  */
 async function getInboxUnreadMailsFromBackground() {
     console.log(`[Content Script]: 收到Background Script请求，获取收件箱未读邮件列表...`);
-    return await queryMailListFromBackground(["2"], true, 100, 0);
+    return await queryMailListFromBackground(["2"], 100, 0);
 }
 
 /**
@@ -431,15 +424,16 @@ async function applyLabelToMail(mailIds, tagIds) {
 
 /**
  * 移动邮件到文件夹
- * @param {string} mailId 邮件ID
+ * @param {string[]} mailIds 邮件ID列表
  * @param {string} folderId 文件夹ID
  */
-async function moveMailToFolder(mailId, folderId) {
-    console.log(`[Content Script]: 移动邮件 ${mailId} 到文件夹 ${folderId}`);
+async function moveMailToFolder(mailIds, folderId) {
+    const mailsArray = Array.isArray(mailIds) ? mailIds : [mailIds];
+    console.log(`[Content Script]: 移动邮件 ${mailsArray.join(',')} 到文件夹 ${folderId}`);
     
     try {
         await aliMailApiRequest('mail/operateMails.txt', {
-            mails: [mailId],
+            mails: mailsArray,
             folderCount: 1,
             tagCount: 0,
             op: 'move',
@@ -455,15 +449,16 @@ async function moveMailToFolder(mailId, folderId) {
 
 /**
  * 标记邮件为已读/未读
- * @param {string} mailId 邮件ID
+ * @param {string[]} mailIds 邮件ID列表
  * @param {boolean} isRead 是否已读
  */
-async function markMailAsRead(mailId, isRead = true) {
-    console.log(`[Content Script]: 标记邮件 ${mailId} 为 ${isRead ? '已读' : '未读'}`);
+async function markMailAsRead(mailIds, isRead = true) {
+    const mailsArray = Array.isArray(mailIds) ? mailIds : [mailIds];
+    console.log(`[Content Script]: 标记邮件 ${mailsArray.join(',')} 为 ${isRead ? '已读' : '未读'}`);
     
     try {
         await aliMailApiRequest('mail/markRead.txt', {
-            mails: [mailId],
+            mails: mailsArray,
             read: isRead ? 1 : 0,
             folderCount: 0,
             tagCount: 1
@@ -500,14 +495,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             
         case 'moveMailToFolder':
         case 'moveMail':  // 兼容Background Script发送的消息
-            moveMailToFolderFromBackground(request.mailId, request.folderId)
+            moveMailToFolderFromBackground(request.mailIds, request.folderId)
                 .then(result => sendResponse(result))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
             
         case 'markMailAsRead':
         case 'markRead':  // 兼容Background Script发送的消息
-            markMailAsReadFromBackground(request.mailId, request.isRead)
+            markMailAsReadFromBackground(request.mailIds, request.isRead)
                 .then(result => sendResponse(result))
                 .catch(error => sendResponse({ success: false, error: error.message }));
             return true;
@@ -521,7 +516,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'queryMailList':
             queryMailListFromBackground(
                 request.folderIds, 
-                request.unreadOnly, 
                 request.maxLength, 
                 request.offset
             )
