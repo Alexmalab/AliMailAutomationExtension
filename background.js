@@ -22,6 +22,14 @@ async function saveRules() {
     console.log("[Background]: 规则已保存:", userRules);
 }
 
+// 监听存储变化，自动重新加载规则
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && changes.aliMailRules) {
+        console.log('[Background]: aliMailRules have changed in storage. Reloading rules...');
+        loadRules();
+    }
+});
+
 // 添加/更新规则
 function addOrUpdateRule(rule) {
     const index = userRules.findIndex(r => r.id === rule.id);
@@ -101,53 +109,119 @@ function evaluateKeywordCondition(keywords, text, caseSensitive = false, conditi
  * 检查地址（发件人/收件人）是否匹配指定的条件
  * @param {Object} condition 条件对象 {enabled, type, address, caseSensitive}
  * @param {Object | Array<Object>} addressContent 要检查的地址内容 (Object {displayName, email} for sender, Array for recipients)
- * @param {boolean} isRecipientList Indicates if addressContent is an array of recipient objects
- * @returns {boolean} 是否匹配
+ * @param {Object | Array<Object>} conditionOrConditions - Condition group object or array of condition group objects.
+ * @param {Object | Array<Object>} addressContent - The address content to check.
+ * @param {boolean} isRecipientList - Indicates if addressContent is an array of recipient objects.
+ * @returns {boolean} True if conditions are met, false otherwise.
  */
-function checkAddressCondition(condition, addressContent, isRecipientList = false) {
-    if (!condition || !condition.enabled || !addressContent) {
-        return true; // 条件未启用或内容为空，默认匹配
+function checkAddressCondition(conditionOrConditions, addressContent, isRecipientList = false) {
+    if (!conditionOrConditions) {
+        return true; // No conditions, default pass
     }
 
-    const ruleAddress = condition.caseSensitive ? condition.address : condition.address.toLowerCase();
-
-    if (isRecipientList) { // For Recipient Array
-        if (!Array.isArray(addressContent)) {
-            console.warn("[checkAddressCondition] Expected recipient list (array) but got:", addressContent);
-            return false; 
+    // Handle backward compatibility for a single condition object (legacy rules)
+    if (!Array.isArray(conditionOrConditions)) {
+        // Assuming old structure: { enabled, type, address, caseSensitive }
+        const legacyCondition = conditionOrConditions;
+        if (!legacyCondition.enabled || !addressContent) {
+            return true; // Condition not enabled or no content, default pass
         }
-        
+        const ruleAddress = legacyCondition.caseSensitive ? legacyCondition.address : legacyCondition.address.toLowerCase();
         let matchFound = false;
-        for (const recipientObj of addressContent) {
-            const email = recipientObj.email || '';
-            const displayName = recipientObj.displayName || '';
-
-            const emailToMatch = condition.caseSensitive ? email : email.toLowerCase();
-            const displayNameToMatch = condition.caseSensitive ? displayName : displayName.toLowerCase();
-
+        if (isRecipientList) {
+            if (!Array.isArray(addressContent)) return false;
+            for (const recipientObj of addressContent) {
+                const email = recipientObj.email || '';
+                const displayName = recipientObj.displayName || '';
+                const emailToMatch = legacyCondition.caseSensitive ? email : email.toLowerCase();
+                const displayNameToMatch = legacyCondition.caseSensitive ? displayName : displayName.toLowerCase();
+                if (emailToMatch.includes(ruleAddress) || displayNameToMatch.includes(ruleAddress)) {
+                    matchFound = true;
+                    break;
+                }
+            }
+        } else {
+            if (typeof addressContent !== 'object' || addressContent === null) return false;
+            const email = addressContent.email || '';
+            const displayName = addressContent.displayName || '';
+            const emailToMatch = legacyCondition.caseSensitive ? email : email.toLowerCase();
+            const displayNameToMatch = legacyCondition.caseSensitive ? displayName : displayName.toLowerCase();
             if (emailToMatch.includes(ruleAddress) || displayNameToMatch.includes(ruleAddress)) {
                 matchFound = true;
-                break;
             }
         }
-        return condition.type === 'include' ? matchFound : !matchFound;
-
-    } else { // For Sender Object {displayName, email}
-        if (typeof addressContent !== 'object' || addressContent === null) {
-            console.warn("[checkAddressCondition] Expected sender object but got:", addressContent);
-            return false;
-        }
-        const email = addressContent.email || '';
-        const displayName = addressContent.displayName || '';
-        const emailToMatch = condition.caseSensitive ? email : email.toLowerCase();
-        const displayNameToMatch = condition.caseSensitive ? displayName : displayName.toLowerCase();
-        
-        let matchFound = false;
-        if (emailToMatch.includes(ruleAddress) || displayNameToMatch.includes(ruleAddress)) {
-            matchFound = true;
-        }
-        return condition.type === 'include' ? matchFound : !matchFound;
+        return legacyCondition.type === 'include' ? matchFound : !matchFound;
     }
+
+    // New structure: array of condition groups
+    const conditionGroups = conditionOrConditions;
+    if (conditionGroups.length === 0) {
+        return true; // No groups, default pass
+    }
+
+    const enabledGroups = conditionGroups.filter(group => group.enabled);
+    if (enabledGroups.length === 0) {
+        return true; // No enabled groups, default pass
+    }
+
+    for (const group of enabledGroups) {
+        if (!addressContent) return true; // Or false, depending on desired strictness for missing content with active groups. Let's keep true for now.
+
+        const ruleAddress = group.caseSensitive ? group.address : group.address.toLowerCase();
+        let groupMatchFound = false;
+
+        if (isRecipientList) {
+            if (!Array.isArray(addressContent)) {
+                console.warn("[checkAddressCondition] Expected recipient list (array) but got:", addressContent);
+                // If one group requires recipients and they are not there, this specific group cannot match.
+                // However, the overall logic might be OR between groups, so we can't fail the whole checkAddressCondition yet.
+                // This means the current group doesn't match.
+                groupMatchFound = false;
+            } else {
+                for (const recipientObj of addressContent) {
+                    const email = recipientObj.email || '';
+                    const displayName = recipientObj.displayName || '';
+                    const emailToMatch = group.caseSensitive ? email : email.toLowerCase();
+                    const displayNameToMatch = group.caseSensitive ? displayName : displayName.toLowerCase();
+                    if (emailToMatch.includes(ruleAddress) || displayNameToMatch.includes(ruleAddress)) {
+                        groupMatchFound = true;
+                        break;
+                    }
+                }
+            }
+        } else { // Sender (single object)
+            if (typeof addressContent !== 'object' || addressContent === null) {
+                console.warn("[checkAddressCondition] Expected sender object but got:", addressContent);
+                groupMatchFound = false; // Similar to above, this group doesn't match.
+            } else {
+                const email = addressContent.email || '';
+                const displayName = addressContent.displayName || '';
+                const emailToMatch = group.caseSensitive ? email : email.toLowerCase();
+                const displayNameToMatch = group.caseSensitive ? displayName : displayName.toLowerCase();
+                if (emailToMatch.includes(ruleAddress) || displayNameToMatch.includes(ruleAddress)) {
+                    groupMatchFound = true;
+                }
+            }
+        }
+        
+        // Evaluate this group's result based on its type (include/exclude)
+        const groupResult = (group.type === 'include') ? groupMatchFound : !groupMatchFound;
+
+        if (!groupResult) {
+            // For address conditions, it's usually an AND logic between different *types* of conditions (sender AND recipient)
+            // but within a single type (e.g. multiple sender groups), it should be OR.
+            // The current structure implies that if any group within this specific condition type (e.g. sender)
+            // evaluates to false, the entire checkAddressCondition for this type fails.
+            // This might need refinement if OR logic between groups of the same type is desired.
+            // For now, let's assume an implicit AND logic for multiple groups of the same address type.
+            // This means if one group fails, the whole condition fails.
+            // This interpretation might be wrong for "any of these senders" vs "all of these sender conditions".
+            // Re-evaluating: The prompt implies "If any enabled group's condition is not met, the function should immediately return false."
+            // This suggests an AND logic: all groups must be true.
+            return false; // If one group's condition is not met, the overall check fails.
+        }
+    }
+    return true; // All enabled groups' conditions were met.
 }
 
 /**
@@ -193,20 +267,71 @@ function evaluateLogicalExpression(processedKeywords, textToMatch) {
 /**
  * 检查邮件是否匹配指定的条件
  * @param {Object} condition 条件对象 {enabled, type, keywords, caseSensitive}
- * @param {string} content 要检查的内容（主题或正文）
- * @returns {boolean} 是否匹配
+ * @param {Object | Array<Object>} conditionOrConditions - Condition group object or array of condition group objects.
+ * @param {string} content - The content to check (subject or body).
+ * @returns {boolean} True if conditions are met, false otherwise.
  */
-function checkCondition(condition, content) {
-    if (!condition || !condition.enabled || !content) {
-        return true; // 条件未启用或内容为空，默认匹配
+function checkCondition(conditionOrConditions, content) {
+    if (!conditionOrConditions) {
+        return true; // No conditions, default pass
+    }
+
+    // Handle backward compatibility for a single condition object (legacy rules)
+    if (!Array.isArray(conditionOrConditions)) {
+        const legacyCondition = conditionOrConditions;
+        if (!legacyCondition.enabled || (legacyCondition.hasOwnProperty('keywords') && (!legacyCondition.keywords || legacyCondition.keywords.length === 0)) && !content) {
+             // If not enabled, or no keywords AND no content, it's a pass (or no-op)
+            return true;
+        }
+        if (!content && legacyCondition.enabled && legacyCondition.keywords && legacyCondition.keywords.length > 0) {
+            return false; // Has keywords, is enabled, but no content to check against
+        }
+        if (!content) return true; // No content, but also no relevant keywords to fail against
+
+        return evaluateKeywordCondition(
+            legacyCondition.keywords,
+            content,
+            legacyCondition.caseSensitive || false,
+            legacyCondition.type || 'include'
+        );
     }
     
-    return evaluateKeywordCondition(
-        condition.keywords,
-        content,
-        condition.caseSensitive || false,
-        condition.type || 'include'
-    );
+    // New structure: array of condition groups
+    const conditionGroups = conditionOrConditions;
+    if (conditionGroups.length === 0) {
+        return true; // No groups, default pass
+    }
+
+    const enabledGroups = conditionGroups.filter(group => group.enabled);
+    if (enabledGroups.length === 0) {
+        return true; // No enabled groups, default pass
+    }
+
+    if (!content) { // If there's no content to check against, but there are enabled groups with keywords
+        for (const group of enabledGroups) {
+            if (group.keywords && group.keywords.length > 0) {
+                // This group wants to check keywords, but there's no content.
+                // If it's an 'include' type, it fails. If 'exclude', it passes.
+                if (group.type === 'include') return false;
+            }
+        }
+        return true; // All groups were 'exclude' or had no keywords
+    }
+
+    for (const group of enabledGroups) {
+        const groupResult = evaluateKeywordCondition(
+            group.keywords,
+            content,
+            group.caseSensitive || false,
+            group.type || 'include'
+        );
+        if (!groupResult) {
+            // "If evaluateKeywordCondition returns false for any enabled group, checkCondition should immediately return false."
+            // This implies an AND logic between groups: all groups must be true.
+            return false;
+        }
+    }
+    return true; // All enabled groups' keyword conditions were met.
 }
 
 // ===============================================
@@ -336,174 +461,152 @@ async function runRulesEngine(mailIdInput, bodyContentInput, subjectInput, sende
                 conditionMet = false;
             }
         } else { // 'normal' condition mode
-            conditionMet = true; // Start with true for normal rules, then AND with each condition check
-            const requiresBody = rule.conditions?.body?.enabled;
-            const requiresRecipientRule = rule.conditions?.recipient?.enabled;
-            const requiresCcRule = rule.conditions?.cc?.enabled;
+            conditionMet = true; // Assume true, and let each check AND with it.
+
+            // Helper to determine if a condition type (like 'body', 'recipient') is active and requires data
+            const isConditionTypeActive = (conditionTypeArray) => {
+                return Array.isArray(conditionTypeArray) && conditionTypeArray.some(group => group.enabled);
+            };
+
+            const requiresBody = isConditionTypeActive(rule.conditions.body);
+            const requiresRecipient = isConditionTypeActive(rule.conditions.recipient);
+            const requiresCc = isConditionTypeActive(rule.conditions.cc);
+            const requiresSender = isConditionTypeActive(rule.conditions.sender); // Though sender is usually available early
+            const requiresSubject = isConditionTypeActive(rule.conditions.subject); // Subject also usually available
 
             // 检查发件人条件
-            if (rule.conditions?.sender?.enabled) {
+            if (requiresSender) {
                 if (!currentSender) {
-                    console.warn(`[Background]: 发件人信息缺失，规则 "${rule.name}" 的发件人条件无法评估，若无后续获取则视为不匹配。`);
-                    // This situation should be rare if initial fetch logic works.
-                    // If sender is critical and missing, conditionMet might become false after fetch attempt.
-                } else {
-                    const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
-                    console.log(`[Background]: 发件人条件匹配结果: ${senderMatch}`);
-                    conditionMet = conditionMet && senderMatch;
+                    console.warn(`[Background]: Sender info missing for rule "${rule.name}", sender condition might fail if not fetched.`);
+                    // Attempt to fetch full details if sender is missing and rule depends on it
                 }
+                // Pass the whole array of sender condition groups
+                const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
+                console.log(`[Background]: Sender condition match result: ${senderMatch} for rule "${rule.name}"`);
+                conditionMet = conditionMet && senderMatch;
             }
             
             // 检查收件人条件
-            if (rule.conditions?.recipient?.enabled) {
+            if (conditionMet && requiresRecipient) {
                 if (!currentRecipient) {
-                     console.log(`[Background]: 规则 "${rule.name}" 需要收件人信息，当前缺失。`);
-                } else {
-                    const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
-                    console.log(`[Background]: 收件人条件匹配结果: ${recipientMatch}`);
-                    conditionMet = conditionMet && recipientMatch;
+                     console.log(`[Background]: Rule "${rule.name}" needs recipient info, currently missing.`);
                 }
+                const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
+                console.log(`[Background]: Recipient condition match result: ${recipientMatch} for rule "${rule.name}"`);
+                conditionMet = conditionMet && recipientMatch;
             }
 
             // 检查抄送条件
-            if (rule.conditions?.cc?.enabled) {
+            if (conditionMet && requiresCc) {
                 if (!currentCcRecipients) {
-                     console.log(`[Background]: 规则 "${rule.name}" 需要抄送信息，当前缺失。`);
-                } else {
-                    const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
-                    console.log(`[Background]: 抄送条件匹配结果: ${ccMatch}`);
-                    conditionMet = conditionMet && ccMatch;
+                     console.log(`[Background]: Rule "${rule.name}" needs CC info, currently missing.`);
                 }
+                const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
+                console.log(`[Background]: CC condition match result: ${ccMatch} for rule "${rule.name}"`);
+                conditionMet = conditionMet && ccMatch;
             }
 
             // 检查主题条件
-            if (rule.conditions?.subject?.enabled) {
+            if (conditionMet && requiresSubject) {
                 const subjectMatch = checkCondition(rule.conditions.subject, currentSubject);
-                console.log(`[Background]: 主题条件匹配结果: ${subjectMatch}`);
+                console.log(`[Background]: Subject condition match result: ${subjectMatch} for rule "${rule.name}"`);
                 conditionMet = conditionMet && subjectMatch;
             }
 
-            // 如果目前条件已不满足，则跳过此规则
             if (!conditionMet) {
-                console.log(`[Background]: 规则 "${rule.name}" 基于头部信息不匹配邮件 ${currentMailId}`);
-                continue;
+                console.log(`[Background]: Rule "${rule.name}" did not match based on initial header/available info for mail ${currentMailId}`);
+                continue; // Skip to next rule
             }
 
-            // 如果需要正文、收件人或抄送信息，但当前没有，则获取完整邮件信息
-            // This fetch is for the *current rule's needs*.
-            const needsFurtherDataFetch = (requiresBody && !currentBodyContent) ||
-                                       (requiresRecipientRule && !currentRecipient) ||
-                                       (requiresCcRule && !currentCcRecipients);
+            // Determine if a fetch for more data is needed
+            const needsBodyFetch = requiresBody && !currentBodyContent;
+            const needsRecipientFetch = requiresRecipient && !currentRecipient;
+            const needsCcFetch = requiresCc && !currentCcRecipients;
+            // Sender fetch might be considered if currentSender is null and requiresSender is true
+            const needsSenderFetch = requiresSender && !currentSender;
+
+            const needsFurtherDataFetch = needsBodyFetch || needsRecipientFetch || needsCcFetch || needsSenderFetch;
 
             if (needsFurtherDataFetch) {
-                console.log(`[Background]: 规则 "${rule.name}" 需要正文/收件人/抄送信息，请求完整邮件内容 for ${currentMailId}`);
+                console.log(`[Background]: Rule "${rule.name}" requires further data (body/recipient/cc/sender). Fetching for ${currentMailId}`);
                 try {
                     const mailDetails = await chrome.tabs.sendMessage(tabId, {
                         action: "fetchMailBody",
-                        mailId: currentMailId // Use currentMailId
+                        mailId: currentMailId
                     });
 
                     if (mailDetails && mailDetails.success && mailDetails.data) {
                         const fullApiData = mailDetails.data.data;
-                        console.log("[Background]: Fetched fullApiData (for rule '"+rule.name+"'):", JSON.stringify(fullApiData, null, 2));
-                        
-                        // Update the main state variables for subsequent rules as well
-                        currentBodyContent = currentBodyContent || fullApiData.body || '';
-                        console.log(`[Background]: currentBodyContent for rule '${rule.name}' after fetch update (length: ${currentBodyContent ? currentBodyContent.length : 0}): '${currentBodyContent.substring(0, 200)}${currentBodyContent && currentBodyContent.length > 200 ? '...' : ''}'`);
-                        
-                        if ((!currentSender || typeof currentSender.email === 'undefined') && fullApiData.from) {
-                             if (typeof fullApiData.from === 'object') {
-                                currentSender = {
-                                    displayName: fullApiData.from.displayName || '',
-                                    email: fullApiData.from.email || ''
-                                };
-                            } else if (typeof fullApiData.from === 'string') {
-                                currentSender = { displayName: fullApiData.from, email: '' };
-                            }
-                            console.log("[Background]: Sender updated from fullApiData:", currentSender);
+                        // Update available content
+                        currentBodyContent = currentBodyContent || fullApiData.body || ''; // Keep existing if already fetched
+                        if ((!currentSender || typeof currentSender.email === 'undefined') && fullApiData.from) { // Update if not set or incomplete
+                           if (typeof fullApiData.from === 'object') {
+                              currentSender = { displayName: fullApiData.from.displayName || '', email: fullApiData.from.email || '' };
+                           } else if (typeof fullApiData.from === 'string') { currentSender = { displayName: fullApiData.from, email: '' };}
                         }
-                        
-                        if (mailDetails.recipient) { // mailDetails.recipient IS the array
+                        if (!currentRecipient && mailDetails.recipient) { // mailDetails.recipient IS the array from content script
                             currentRecipient = mailDetails.recipient; 
-                            console.log("[Background]: Recipient array updated from mailDetails:", currentRecipient);
                         }
-                        if (mailDetails.ccRecipients) {
+                        if (!currentCcRecipients && mailDetails.ccRecipients) {
                             currentCcRecipients = mailDetails.ccRecipients;
-                            console.log("[Background]: CC Recipient array updated from mailDetails:", currentCcRecipients);
                         }
+                        console.log(`[Background]: Full mail details fetched for ${currentMailId}. Body length: ${currentBodyContent?.length}`);
 
-                        console.log(`[Background]: 成功获取完整邮件内容 for ${currentMailId}. Updated Sender:`, currentSender, ", Updated Recipient(To):", currentRecipient ? currentRecipient.length : 0, ", Updated CC: ", currentCcRecipients ? currentCcRecipients.length : 0 );
-                        
-                        // Re-evaluate conditions based on newly fetched data
-                        // Important: AND with existing conditionMet status
-                        let tempConditionMetAfterFetch = true;
-                        if (rule.conditions?.sender?.enabled) {
-                            if (!currentSender) { tempConditionMetAfterFetch = false; } // Should not happen if fetch was for sender
-                            else {
-                                const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
-                                console.log(`[Background]: (完整邮件后) 发件人条件匹配结果: ${senderMatch}`);
-                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && senderMatch;
-                            }
+                        // Re-evaluate conditions that might have depended on fetched data
+                        // AND with existing conditionMet. If it was already false, it stays false.
+                        if (conditionMet && needsSenderFetch && requiresSender) {
+                            const senderMatch = checkAddressCondition(rule.conditions.sender, currentSender, false);
+                            console.log(`[Background]: Sender condition re-evaluation after fetch: ${senderMatch}`);
+                            conditionMet = conditionMet && senderMatch;
                         }
-
-                        if (requiresRecipientRule) { // Check enabled flag directly
-                            if (!currentRecipient) {
-                                console.warn(`[Background]: 收件人信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的收件人条件`);
-                                tempConditionMetAfterFetch = false;
-                            } else {
-                                const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
-                                console.log(`[Background]: (完整邮件后) 收件人条件匹配结果: ${recipientMatch}`);
-                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && recipientMatch;
-                            }
+                        if (conditionMet && needsRecipientFetch && requiresRecipient) {
+                            const recipientMatch = checkAddressCondition(rule.conditions.recipient, currentRecipient, true);
+                            console.log(`[Background]: Recipient condition re-evaluation after fetch: ${recipientMatch}`);
+                            conditionMet = conditionMet && recipientMatch;
                         }
-                        
-                        if (requiresCcRule) { // Check enabled flag directly
-                            if (!currentCcRecipients) {
-                                console.warn(`[Background]: 抄送信息在获取完整邮件后仍然缺失，无法评估规则 "${rule.name}" 的抄送条件`);
-                                tempConditionMetAfterFetch = false;
-                            } else {
-                                const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
-                                console.log(`[Background]: (完整邮件后) 抄送条件匹配结果: ${ccMatch}`);
-                                tempConditionMetAfterFetch = tempConditionMetAfterFetch && ccMatch;
-                            }
+                        if (conditionMet && needsCcFetch && requiresCc) {
+                            const ccMatch = checkAddressCondition(rule.conditions.cc, currentCcRecipients, true);
+                            console.log(`[Background]: CC condition re-evaluation after fetch: ${ccMatch}`);
+                            conditionMet = conditionMet && ccMatch;
                         }
-                        conditionMet = conditionMet && tempConditionMetAfterFetch;
-
+                        // Body condition is checked separately after this block if still needed
                     } else {
-                        console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容失败，无法评估依赖正文/收件人的规则 "${rule.name}"`);
-                        // If fetch failed for data that was required for conditions, those conditions might fail or be unevaluable.
-                        // Set conditionMet to false if critical data for *this rule* is still missing.
-                        if (requiresRecipientRule && !currentRecipient) conditionMet = false;
-                        if (requiresCcRule && !currentCcRecipients) conditionMet = false;
-                        if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false; // If body was target of fetch
+                        console.error(`[Background]: Failed to fetch full mail details for ${currentMailId}. Rule "${rule.name}" may not match if dependent on this data.`);
+                        // If critical data is still missing, set conditionMet to false
+                        if (needsBodyFetch && !currentBodyContent && requiresBody) conditionMet = false;
+                        if (needsRecipientFetch && !currentRecipient && requiresRecipient) conditionMet = false;
+                        if (needsCcFetch && !currentCcRecipients && requiresCc) conditionMet = false;
+                        if (needsSenderFetch && !currentSender && requiresSender) conditionMet = false;
                     }
                 } catch (error) {
-                    console.error(`[Background]: 获取邮件 ${currentMailId} 完整内容时出错:`, error);
-                    if (requiresRecipientRule && !currentRecipient) conditionMet = false;
-                    if (requiresCcRule && !currentCcRecipients) conditionMet = false;
-                    if (requiresBody && !currentBodyContent && rule.conditions.body.enabled) conditionMet = false;
+                    console.error(`[Background]: Error fetching mail details for ${currentMailId}:`, error);
+                    if (needsBodyFetch && !currentBodyContent && requiresBody) conditionMet = false;
+                    if (needsRecipientFetch && !currentRecipient && requiresRecipient) conditionMet = false;
+                    if (needsCcFetch && !currentCcRecipients && requiresCc) conditionMet = false;
+                    if (needsSenderFetch && !currentSender && requiresSender) conditionMet = false;
                 }
-            }
-            
-            // 如果仍然不匹配 (e.g. recipient check failed after fetch or AI check failed)
+            } // End of needsFurtherDataFetch block
+
+            // If, after potential fetch, conditions are still not met, skip this rule.
             if (!conditionMet) {
-                console.log(`[Background]: 规则 "${rule.name}" (mode: ${ruleConditionMode}) 在获取/评估完整信息后不匹配邮件 ${currentMailId}`);
+                console.log(`[Background]: Rule "${rule.name}" (mode: ${ruleConditionMode}) did not match after data fetch for mail ${currentMailId}`);
                 continue;
             }
 
-            // 检查正文条件 (if required and body is available) - ONLY for normal rules
-            if (ruleConditionMode === 'normal' && requiresBody) { // True if rule.conditions.body.enabled
-                if (!currentBodyContent) { // Check currentBodyContent, which would have been updated by fetch if successful
-                     console.warn(`[Background]: 规则 "${rule.name}" 的正文条件启用，但正文内容最终无法获取。规则不匹配。`);
-                     conditionMet = false; // CRITICAL FIX: If body required by rule, but no content, rule fails.
+            // Check body condition ONLY if it's required AND conditionMet is still true
+            if (conditionMet && ruleConditionMode === 'normal' && requiresBody) {
+                if (!currentBodyContent) {
+                     console.warn(`[Background]: Rule "${rule.name}" requires body content, but it's unavailable. Rule will not match.`);
+                     conditionMet = false;
                 } else {
                     const bodyMatch = checkCondition(rule.conditions.body, currentBodyContent);
-                    console.log(`[Background]: 正文条件匹配结果: ${bodyMatch}`);
+                    console.log(`[Background]: Body condition match result: ${bodyMatch} for rule "${rule.name}"`);
                     conditionMet = conditionMet && bodyMatch;
                 }
             }
-        }
+        } // End of 'normal' condition mode block
         
+        // Final check of conditionMet before executing actions
         if (conditionMet) {
             console.log(`[Background]: 规则 "${rule.name}" 匹配邮件 ${currentMailId} 成功。执行操作...`);
             

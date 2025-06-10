@@ -14,37 +14,22 @@ const ruleEnabledCheckbox = document.getElementById('ruleEnabled');
 const cancelButton = document.querySelector('.cancel-btn');
 const normalRuleActions = document.getElementById('normalRuleActions');
 
-// 主题条件元素
-const subjectConditionToggle = document.getElementById('subjectConditionToggle');
-const subjectConditionType = document.getElementById('subjectConditionType');
-const subjectKeywordsContainer = document.getElementById('subjectKeywordsContainer');
-const subjectCaseSensitiveCheckbox = document.getElementById('subjectCaseSensitive');
+// Main Condition Toggles & Containers
+const conditionTypes = ['subject', 'sender', 'recipient', 'cc', 'body'];
+const conditionElements = {};
 
-// 发件人条件元素
-const senderConditionToggle = document.getElementById('senderConditionToggle');
-const senderConditionType = document.getElementById('senderConditionType');
-const senderAddressInput = document.getElementById('senderAddress');
-const senderCaseSensitiveCheckbox = document.getElementById('senderCaseSensitive');
-
-// 收件人条件元素
-const recipientConditionToggle = document.getElementById('recipientConditionToggle');
-const recipientConditionType = document.getElementById('recipientConditionType');
-const recipientAddressInput = document.getElementById('recipientAddress');
-const recipientCaseSensitiveCheckbox = document.getElementById('recipientCaseSensitive');
-
-// 抄送条件元素
-const ccConditionToggle = document.getElementById('ccConditionToggle');
-const ccConditionType = document.getElementById('ccConditionType');
-const ccAddressInput = document.getElementById('ccAddress');
-const ccCaseSensitiveCheckbox = document.getElementById('ccCaseSensitive');
-
-// 正文条件元素
-const bodyConditionToggle = document.getElementById('bodyConditionToggle');
-const bodyConditionType = document.getElementById('bodyConditionType');
-const bodyKeywordsContainer = document.getElementById('bodyKeywordsContainer');
-const bodyCaseSensitiveCheckbox = document.getElementById('bodyCaseSensitive');
-const bodyKeywordLogicOr = document.querySelector('input[name="bodyKeywordLogic"][value="or"]');
-const bodyKeywordLogicAnd = document.querySelector('input[name="bodyKeywordLogic"][value="and"]');
+conditionTypes.forEach(type => {
+    conditionElements[type] = {
+        toggle: document.getElementById(`${type}ConditionToggle`),
+        container: document.getElementById(`${type}ConditionsContainer`), // e.g., subjectConditionsContainer
+        addBtn: document.getElementById(`add${type.charAt(0).toUpperCase() + type.slice(1)}GroupBtn`), // e.g., addSubjectGroupBtn
+        // Old individual fields - keep for now for clearForm, but will be removed/refactored for group structure
+        typeSelect: document.getElementById(`${type}ConditionType`), // e.g., subjectConditionType
+        keywordsContainer: type === 'subject' || type === 'body' ? document.getElementById(`${type}KeywordsContainer`) : null, // e.g., subjectKeywordsContainer
+        caseSensitiveCheckbox: document.getElementById(`${type}CaseSensitive`), // e.g., subjectCaseSensitive
+        addressInput: type === 'sender' || type === 'recipient' || type === 'cc' ? document.getElementById(`${type}Address`) : null // e.g., senderAddress
+    };
+});
 
 // 操作元素
 const moveToFolderAction = document.getElementById('moveToFolderAction');
@@ -89,34 +74,61 @@ function clearForm() {
     modalTitle.textContent = '新建收信规则';
     ruleEnabledCheckbox.checked = true; // 默认启用
 
-    // 重置主题条件相关
-    subjectConditionToggle.checked = false;
-    toggleConditionFields('subject', false);
-    clearKeywordsContainer(subjectKeywordsContainer);
-    populateKeywordsContainer(subjectKeywordsContainer, []); // 使用新的方法初始化
+    conditionTypes.forEach(type => {
+        const elements = conditionElements[type];
+        if (elements.toggle) elements.toggle.checked = false;
 
-    // 重置发件人条件相关
-    senderConditionToggle.checked = false;
-    toggleConditionFields('sender', false);
-    senderAddressInput.value = '';
+        // Clear the main container for condition groups
+        if (elements.container) {
+            elements.container.innerHTML = '';
+        }
 
-    // 重置收件人条件相关
-    recipientConditionToggle.checked = false;
-    toggleConditionFields('recipient', false);
-    recipientAddressInput.value = '';
+        // Disable "Add Group" button
+        if (elements.addBtn) {
+            elements.addBtn.disabled = true;
+        }
 
-    // 重置抄送条件相关
-    ccConditionToggle.checked = false;
-    toggleConditionFields('cc', false);
-    ccAddressInput.value = '';
+        // Legacy fields cleanup (will be mostly removed once editRule is refactored)
+        if (elements.typeSelect) elements.typeSelect.disabled = true;
+        if (elements.caseSensitiveCheckbox) elements.caseSensitiveCheckbox.disabled = true;
+        if (elements.keywordsContainer) { // old subjectKeywordsContainer / bodyKeywordsContainer
+            clearKeywordsContainer(elements.keywordsContainer); // Clear old single container
+            elements.keywordsContainer.style.display = 'none'; // Hide old container
+        }
+        if (elements.addressInput) { // old senderAddressInput etc.
+            elements.addressInput.disabled = true;
+            elements.addressInput.value = '';
+            elements.addressInput.style.display = 'none'; // Hide old container
+        }
+        // Hide legacy wrapper divs if they exist and are separate
+        const legacyWrapper = document.getElementById(`${type}ConditionFields`); // e.g. subjectConditionFields
+        if (legacyWrapper) {
+            legacyWrapper.style.display = 'none';
+        }
+    });
 
-    // 重置正文条件相关
-    bodyConditionToggle.checked = false;
-    toggleConditionFields('body', false);
-    clearKeywordsContainer(bodyKeywordsContainer);
-    populateKeywordsContainer(bodyKeywordsContainer, []); // 使用新的方法初始化
+    // Ensure old global keyword containers (if not already caught above) are cleared and hidden
+    // These might be different from the ones in conditionElements if HTML structure was mixed
+    if (document.getElementById('subjectKeywordsContainer')) {
+         clearKeywordsContainer(document.getElementById('subjectKeywordsContainer'));
+         document.getElementById('subjectKeywordsContainer').style.display = 'none';
+    }
+    if (document.getElementById('bodyKeywordsContainer')) {
+        clearKeywordsContainer(document.getElementById('bodyKeywordsContainer'));
+        document.getElementById('bodyKeywordsContainer').style.display = 'none';
+    }
+    // Hide old address input fields that were global
+    ['senderAddress', 'recipientAddress', 'ccAddress'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = '';
+            el.disabled = true;
+            el.style.display = 'none';
+        }
+    });
 
-    // 重置操作
+
+    // Reset operations
     const normalRuleRadio = document.querySelector('input[name="actionType"][value="normal"]');
     normalRuleRadio.checked = true;
     normalRuleActions.style.display = 'block';
@@ -143,55 +155,76 @@ function clearForm() {
 
 function toggleConditionFields(conditionType, enabled) {
     if (conditionType === 'subject') {
-        subjectConditionType.disabled = !enabled;
-        subjectCaseSensitiveCheckbox.disabled = !enabled;
-        
-        // 切换关键字输入框和按钮状态
-        subjectKeywordsContainer.querySelectorAll('input, button, select').forEach(element => {
-            element.disabled = !enabled;
-        });
-        
-        if (enabled && subjectKeywordsContainer.children.length === 0) {
-            addKeywordInput(subjectKeywordsContainer, '', 'or', true);
-        }
-    } else if (conditionType === 'body') {
-        bodyConditionType.disabled = !enabled;
-        bodyCaseSensitiveCheckbox.disabled = !enabled;
-        
-        // 切换关键字输入框和按钮状态
-        bodyKeywordsContainer.querySelectorAll('input, button, select').forEach(element => {
-            element.disabled = !enabled;
-        });
-        
-        if (enabled && bodyKeywordsContainer.children.length === 0) {
-            addKeywordInput(bodyKeywordsContainer, '', 'or', true);
-        }
-    } else if (conditionType === 'sender') {
-        senderConditionType.disabled = !enabled;
-        senderAddressInput.disabled = !enabled;
-        senderCaseSensitiveCheckbox.disabled = !enabled;
-    } else if (conditionType === 'recipient') {
-        recipientConditionType.disabled = !enabled;
-        recipientAddressInput.disabled = !enabled;
-        recipientCaseSensitiveCheckbox.disabled = !enabled;
-    } else if (conditionType === 'cc') {
-        ccConditionType.disabled = !enabled;
-        ccAddressInput.disabled = !enabled;
-        ccCaseSensitiveCheckbox.disabled = !enabled;
+function toggleConditionFields(conditionType, enabled) {
+    // This function is now primarily for the main toggle controlling the "Add Group" button
+    // and the overall state of existing groups for that type.
+    const elements = conditionElements[conditionType];
+    if (!elements) return;
+
+    if (elements.addBtn) {
+        elements.addBtn.disabled = !enabled;
     }
+
+    // Disable/Enable all controls within each group of this type
+    if (elements.container) {
+        const groups = elements.container.querySelectorAll(`.condition-group.${conditionType}-group`);
+        groups.forEach(groupDiv => {
+            const groupEnabledCheckbox = groupDiv.querySelector('.condition-group-enabled');
+            // If overall section is disabled, the group's own checkbox is disabled.
+            // If overall section is enabled, group's checkbox state determines its controls.
+            groupEnabledCheckbox.disabled = !enabled;
+
+            const isEffectivelyEnabled = enabled && groupEnabledCheckbox.checked;
+
+            groupDiv.querySelectorAll('.condition-group-type, .condition-group-case-sensitive, .condition-group-address').forEach(el => {
+                el.disabled = !isEffectivelyEnabled;
+            });
+
+            if (conditionType === 'subject' || conditionType === 'body') {
+                const keywordsContainer = groupDiv.querySelector('.keywords-container-for-this-group');
+                if (keywordsContainer) {
+                    keywordsContainer.querySelectorAll('input, button, select').forEach(el => {
+                        el.disabled = !isEffectivelyEnabled;
+                    });
+                    // If re-enabling the section, and group is checked, ensure keyword buttons are correct
+                    if (isEffectivelyEnabled) {
+                         const kwData = getKeywordsFromContainer(keywordsContainer);
+                         populateKeywordsContainer(keywordsContainer, kwData, true); // true because isEffectivelyEnabled
+                    }
+                }
+            }
+            // The remove button for the group should reflect the overall toggle state
+            const removeGroupBtn = groupDiv.querySelector('.remove-condition-group-btn');
+            if (removeGroupBtn) {
+                removeGroupBtn.disabled = !enabled;
+            }
+        });
+    }
+
+    // Hide/show legacy single field wrappers if they exist
+    // These should eventually be removed from HTML.
+    const legacyWrapperId = `${conditionType}ConditionFields`; // e.g., subjectConditionFields
+    const legacyWrapper = document.getElementById(legacyWrapperId);
+    if (legacyWrapper) {
+        legacyWrapper.style.display = 'none'; // Always hide, new group UI supersedes
+    }
+     // Also hide old individual keyword containers and address inputs
+    if (elements.keywordsContainer) elements.keywordsContainer.style.display = 'none';
+    if (elements.addressInput) elements.addressInput.style.display = 'none';
+
+
 }
 
 function clearKeywordsContainer(container) {
     container.innerHTML = '';
 }
 
-function addKeywordInput(container, value = '', logic = 'or', isLast = true) {
-    // 检查是否有空的关键字输入框
+function addKeywordInput(container, value = '', logic = 'or', isLast = true, groupEnabled = true) {
     const hasEmptyKeyword = Array.from(container.querySelectorAll('.keyword-item input[type="text"]'))
         .some(input => !input.value.trim());
     
     if (hasEmptyKeyword && !value) {
-        return; // 如果有空的关键字输入框且不是在填充已有值，则不添加新的
+        return;
     }
 
     const div = document.createElement('div');
@@ -201,34 +234,29 @@ function addKeywordInput(container, value = '', logic = 'or', isLast = true) {
     input.type = 'text';
     input.placeholder = '关键字';
     input.value = value;
-    input.disabled = !getConditionToggleState(container);
+    input.disabled = !groupEnabled;
 
-    // Create logic selector element if needed, but defer appending
     let logicSelectElement = null;
     if (!isLast) {
         logicSelectElement = document.createElement('select');
-        logicSelectElement.disabled = !getConditionToggleState(container);
+        logicSelectElement.disabled = !groupEnabled;
         logicSelectElement.innerHTML = '<option value="or">或</option><option value="and">且</option>';
         logicSelectElement.value = logic;
-        // Original div.appendChild(logicSelect) is removed from here
     }
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.textContent = '×';
     removeBtn.title = '删除关键字';
-    removeBtn.disabled = !getConditionToggleState(container);
+    removeBtn.disabled = !groupEnabled;
     removeBtn.addEventListener('click', () => {
-        // 如果只有一个关键字，不允许删除
         if (container.querySelectorAll('.keyword-item').length <= 1) {
             return;
         }
         div.remove();
-        // 重新调整最后一个关键字的逻辑连接符显示
-        updateLastKeywordItem(container);
+        updateLastKeywordItem(container, groupEnabled);
     });
 
-    // Append elements in the correct order: input, then logic selector (if it exists), then remove button
     div.appendChild(input);
     if (logicSelectElement) {
         div.appendChild(logicSelectElement);
@@ -237,65 +265,50 @@ function addKeywordInput(container, value = '', logic = 'or', isLast = true) {
     container.appendChild(div);
 }
 
-function updateLastKeywordItem(container) {
+function updateLastKeywordItem(container, groupEnabled = true) {
     const items = container.querySelectorAll('.keyword-item');
     items.forEach((item, index) => {
         const logicSelect = item.querySelector('select');
         const isLastItem = index === items.length - 1;
         
         if (isLastItem && logicSelect) {
-            // 最后一个应该移除逻辑连接符
             logicSelect.remove();
         } else if (!isLastItem && !logicSelect) {
-            // 不是最后一个但没有逻辑连接符，需要添加
-            const input = item.querySelector('input[type="text"]');
             const removeBtn = item.querySelector('button');
             const newLogicSelect = document.createElement('select');
-            newLogicSelect.disabled = !getConditionToggleState(container);
+            newLogicSelect.disabled = !groupEnabled;
             newLogicSelect.innerHTML = '<option value="or">或</option><option value="and">且</option>';
-            newLogicSelect.value = 'or';
+            newLogicSelect.value = 'or'; // Default to 'or'
             item.insertBefore(newLogicSelect, removeBtn);
         }
     });
 }
 
-function addKeywordGroup(container) {
+function addKeywordGroupButton(container, groupEnabled = true) { // Renamed from addKeywordGroup
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'add-keyword-btn';
     addBtn.textContent = '+';
     addBtn.title = '添加关键字';
-    addBtn.disabled = !getConditionToggleState(container);
+    addBtn.disabled = !groupEnabled;
     addBtn.addEventListener('click', () => {
-        // 移除旧的添加按钮
+        // Temporarily remove the button to re-add it after new input
         addBtn.remove();
-        // 添加新的关键字输入框（不是最后一个）
-        addKeywordInput(container, '', 'or', false);
-        // 更新所有关键字项的连接符显示
-        updateLastKeywordItem(container);
-        // 重新添加添加按钮
-        addKeywordGroup(container);
+        // Add new keyword input, not as the last one initially
+        addKeywordInput(container, '', 'or', false, groupEnabled);
+        // Update logic selectors for all items
+        updateLastKeywordItem(container, groupEnabled);
+        // Re-add the "Add Keyword" button
+        addKeywordGroupButton(container, groupEnabled);
     });
     container.appendChild(addBtn);
 }
 
-function getConditionToggleState(container) {
-    if (container === bodyKeywordsContainer) {
-        return bodyConditionToggle.checked;
-    } else if (container === subjectKeywordsContainer) {
-        return subjectConditionToggle.checked;
-    } else if (container === senderAddressInput) { // Assuming senderAddressInput is unique enough
-        return senderConditionToggle.checked;
-    } else if (container === recipientAddressInput) { // Assuming recipientAddressInput is unique enough
-        return recipientConditionToggle.checked;
-    } else if (container === ccAddressInput) { 
-        return ccConditionToggle.checked;
-    }
-    return false;
-}
+// getConditionToggleState is no longer needed in its current form.
+// Group enabled state will be passed directly or checked from the group's own checkbox.
 
-function getKeywordsFromContainer(container) {
-    const items = container.querySelectorAll('.keyword-item');
+function getKeywordsFromContainer(keywordsContainer) { // Parameter renamed for clarity
+    const items = keywordsContainer.querySelectorAll('.keyword-item');
     const result = [];
     
     items.forEach((item, index) => {
@@ -305,12 +318,12 @@ function getKeywordsFromContainer(container) {
         
         if (keyword !== '') {
             const keywordData = { keyword: keyword };
-            
-            // 如果不是最后一个，添加逻辑连接符
-            if (index < items.length - 1 && logicSelect) {
+            if (index < items.length - 1 && logicSelect) { // Logic only if not last
                 keywordData.logic = logicSelect.value;
+            } else if (index < items.length - 1 && !logicSelect) { // Default to 'or' if no select but not last
+                 keywordData.logic = 'or';
             }
-            
+            // For the last item, no logic property is added.
             result.push(keywordData);
         }
     });
@@ -318,27 +331,150 @@ function getKeywordsFromContainer(container) {
     return result;
 }
 
-function populateKeywordsContainer(container, keywordData) {
-    clearKeywordsContainer(container);
+function populateKeywordsContainer(keywordsContainer, keywordDataArray, groupEnabled = true) { // Parameter renamed and groupEnabled added
+    clearKeywordsContainer(keywordsContainer);
     
-    if (keywordData && keywordData.length > 0) {
-        keywordData.forEach((data, index) => {
-            const isLast = index === keywordData.length - 1;
-            if (typeof data === 'string') {
-                // 兼容旧格式
-                addKeywordInput(container, data, 'or', isLast);
-            } else {
-                // 新格式
-                addKeywordInput(container, data.keyword, data.logic || 'or', isLast);
+    if (keywordDataArray && keywordDataArray.length > 0) {
+        keywordDataArray.forEach((data, index) => {
+            const isLast = index === keywordDataArray.length - 1;
+            if (typeof data === 'string') { // Compatibility with old string format
+                addKeywordInput(keywordsContainer, data, 'or', isLast, groupEnabled);
+            } else { // New object format
+                addKeywordInput(keywordsContainer, data.keyword, data.logic || 'or', isLast, groupEnabled);
             }
         });
     } else {
-        addKeywordInput(container, '', 'or', true); // 至少一个空输入框
+        addKeywordInput(keywordsContainer, '', 'or', true, groupEnabled); // Add one empty input if no data
+    }
+    updateLastKeywordItem(keywordsContainer, groupEnabled); // Ensure logic selectors are correct
+    addKeywordGroupButton(keywordsContainer, groupEnabled); // Add the "+" button
+}
+
+// ===============================================
+// NEW: Condition Group UI Management
+// ===============================================
+
+/**
+ * Creates a DOM element for a new condition group.
+ * @param {string} conditionType - 'subject', 'body', 'sender', 'recipient', 'cc'.
+ * @param {object} [groupData=null] - Optional data to populate the group.
+ * @param {boolean} [isOverallEnabled=true] - Whether the parent condition type is enabled (e.g. subjectConditionToggle.checked)
+ * @returns {HTMLElement} The condition group element.
+ */
+function createConditionGroupUI(conditionType, groupData = null, isOverallEnabled = true) {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = `condition-group ${conditionType}-group mb-2 p-2 border rounded`;
+
+    let isGroupEnabled = groupData ? groupData.enabled : true; // Default new groups to enabled
+
+    const groupEnabledCheckbox = document.createElement('input');
+    groupEnabledCheckbox.type = 'checkbox';
+    groupEnabledCheckbox.className = 'condition-group-enabled form-check-input me-2';
+    groupEnabledCheckbox.checked = isGroupEnabled && isOverallEnabled; // Group enabled only if overall toggle is also on
+    groupEnabledCheckbox.disabled = !isOverallEnabled;
+    groupEnabledCheckbox.title = 'Enable this specific condition group';
+
+    const groupTypeSelect = document.createElement('select');
+    groupTypeSelect.className = 'condition-group-type form-select form-select-sm me-2';
+    groupTypeSelect.innerHTML = `
+        <option value="include">Include</option>
+        <option value="exclude">Exclude</option>
+    `;
+    groupTypeSelect.value = groupData ? groupData.type : 'include';
+    groupTypeSelect.disabled = !isGroupEnabled || !isOverallEnabled;
+
+    const groupCaseSensitiveCheckbox = document.createElement('input');
+    groupCaseSensitiveCheckbox.type = 'checkbox';
+    groupCaseSensitiveCheckbox.className = 'condition-group-case-sensitive form-check-input ms-2 me-1';
+    groupCaseSensitiveCheckbox.checked = groupData ? groupData.caseSensitive : false;
+    groupCaseSensitiveCheckbox.disabled = !isGroupEnabled || !isOverallEnabled;
+    const caseSensitiveLabel = document.createElement('label');
+    caseSensitiveLabel.className = 'form-check-label me-2';
+    caseSensitiveLabel.textContent = 'Case Sensitive';
+    caseSensitiveLabel.appendChild(groupCaseSensitiveCheckbox);
+
+
+    const removeGroupBtn = document.createElement('button');
+    removeGroupBtn.type = 'button';
+    removeGroupBtn.className = 'remove-condition-group-btn btn btn-sm btn-outline-danger';
+    removeGroupBtn.textContent = 'Remove Group';
+    removeGroupBtn.disabled = !isOverallEnabled;
+    removeGroupBtn.addEventListener('click', () => groupDiv.remove());
+
+    // Top row for controls
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'd-flex align-items-center mb-2';
+    controlsRow.appendChild(groupEnabledCheckbox);
+    controlsRow.appendChild(document.createTextNode("Group Enabled")); // Simple label
+    controlsRow.appendChild(groupTypeSelect);
+
+
+    if (conditionType === 'subject' || conditionType === 'body') {
+        const keywordsContainer = document.createElement('div');
+        keywordsContainer.className = 'keywords-container-for-this-group mt-2';
+        populateKeywordsContainer(keywordsContainer, groupData ? groupData.keywords : [], isGroupEnabled && isOverallEnabled);
+
+        controlsRow.appendChild(caseSensitiveLabel); // Add case sensitive checkbox to controls row
+        groupDiv.appendChild(controlsRow);
+        groupDiv.appendChild(keywordsContainer);
+    } else { // sender, recipient, cc
+        const addressInput = document.createElement('input');
+        addressInput.type = 'text';
+        addressInput.className = 'condition-group-address form-control form-control-sm me-2';
+        addressInput.placeholder = (conditionType === 'sender' ? 'Sender' : (conditionType === 'recipient' ? 'Recipient' : 'CC')) + ' Address';
+        addressInput.value = groupData ? groupData.address : '';
+        addressInput.disabled = !isGroupEnabled || !isOverallEnabled;
+
+        controlsRow.appendChild(addressInput);
+        controlsRow.appendChild(caseSensitiveLabel); // Add case sensitive checkbox to controls row
+        groupDiv.appendChild(controlsRow);
     }
     
-    // 添加"添加关键字"按钮
-    addKeywordGroup(container);
+    groupDiv.appendChild(removeGroupBtn); // Add remove button at the bottom of the group
+
+    // Event listener for the group's own enabled checkbox
+    groupEnabledCheckbox.addEventListener('change', () => {
+        const currentlyEnabled = groupEnabledCheckbox.checked;
+        groupTypeSelect.disabled = !currentlyEnabled;
+        groupCaseSensitiveCheckbox.disabled = !currentlyEnabled;
+
+        if (conditionType === 'subject' || conditionType === 'body') {
+            const keywordsContainer = groupDiv.querySelector('.keywords-container-for-this-group');
+            keywordsContainer.querySelectorAll('input, button, select').forEach(el => el.disabled = !currentlyEnabled);
+            // Repopulate to fix button states if needed, or just update disabled state of buttons
+            const kwData = getKeywordsFromContainer(keywordsContainer);
+            populateKeywordsContainer(keywordsContainer, kwData, currentlyEnabled);
+
+        } else {
+            const addressInput = groupDiv.querySelector('.condition-group-address');
+            addressInput.disabled = !currentlyEnabled;
+        }
+    });
+    return groupDiv;
 }
+
+
+/**
+ * Sets up the "Add [Type] Condition Group" button for a given condition type.
+ * @param {string} conditionType - 'subject', 'body', 'sender', 'recipient', 'cc'.
+ */
+function addConditionGroupEventListener(conditionType) {
+    const mainContainer = document.getElementById(`${conditionType}ConditionsContainer`);
+    const addBtn = document.getElementById(`add${conditionType.charAt(0).toUpperCase() + conditionType.slice(1)}GroupBtn`); // e.g. addSubjectGroupBtn
+
+    if (!mainContainer || !addBtn) {
+        console.error(`Missing container or button for ${conditionType}`);
+        return;
+    }
+
+    addBtn.addEventListener('click', () => {
+        // isOverallEnabled should be true if the add button is clickable.
+        // This relies on the main toggle (e.g., subjectConditionToggle) enabling/disabling this add button.
+        const newGroupUI = createConditionGroupUI(conditionType, null, true);
+        mainContainer.appendChild(newGroupUI);
+    });
+}
+
 
 // 填充下拉框
 function populateDropdowns() {
@@ -381,25 +517,25 @@ window.addEventListener('click', (event) => {
     }
 });
 
-// 规则启用/禁用切换
-subjectConditionToggle.addEventListener('change', (e) => {
-    toggleConditionFields('subject', e.target.checked);
+// Set up main condition toggle listeners
+conditionTypes.forEach(type => {
+    const elements = conditionElements[type];
+    if (elements.toggle) {
+        elements.toggle.addEventListener('change', (e) => {
+            toggleConditionFields(type, e.target.checked);
+            if (e.target.checked && elements.container.children.length === 0) {
+                // Optionally add a default empty group when main toggle is first enabled
+                // For now, user must click "+ Add Group"
+                // const newGroup = createConditionGroupUI(type, null, true);
+                // elements.container.appendChild(newGroup);
+            }
+        });
+    }
 });
 
-senderConditionToggle.addEventListener('change', (e) => {
-    toggleConditionFields('sender', e.target.checked);
-});
-
-recipientConditionToggle.addEventListener('change', (e) => {
-    toggleConditionFields('recipient', e.target.checked);
-});
-
-ccConditionToggle.addEventListener('change', (e) => {
-    toggleConditionFields('cc', e.target.checked);
-});
-
-bodyConditionToggle.addEventListener('change', (e) => {
-    toggleConditionFields('body', e.target.checked);
+// Initialize "Add Group" button listeners
+conditionTypes.forEach(type => {
+    addConditionGroupEventListener(type);
 });
 
 moveToFolderAction.addEventListener('change', (e) => {
@@ -528,97 +664,74 @@ ruleForm.addEventListener('submit', async (e) => {
         return;
     }
 
-    let conditions = {};
+    let conditions = {
+        subject: [],
+        sender: [],
+        recipient: [],
+        cc: [],
+        body: []
+    };
     let aiPromptDetails = null;
 
     if (conditionMode === 'normal') {
-        // 收集主题条件
-        const subjectCondition = {};
-        if (subjectConditionToggle.checked) {
-            subjectCondition.enabled = true;
-            subjectCondition.type = subjectConditionType.value;
-            subjectCondition.keywords = getKeywordsFromContainer(subjectKeywordsContainer);
-            subjectCondition.caseSensitive = subjectCaseSensitiveCheckbox.checked;
-
-            if (subjectCondition.keywords.length === 0) {
-                alert('请至少为主题条件输入一个关键字！');
-                return;
+        let validationPassed = true;
+        conditionTypes.forEach(type => {
+            const elements = conditionElements[type];
+            if (!elements.toggle.checked) {
+                conditions[type] = []; // Main toggle for this condition type is off
+                return; // Skip to next condition type
             }
-        } else {
-            subjectCondition.enabled = false;
+
+            const groupsInContainer = elements.container.querySelectorAll(`.condition-group.${type}-group`);
+            const collectedGroupsData = [];
+
+            groupsInContainer.forEach(groupDiv => {
+                const groupEnabledCheckbox = groupDiv.querySelector('.condition-group-enabled');
+                const isGroupEnabled = groupEnabledCheckbox.checked;
+
+                const groupTypeSelect = groupDiv.querySelector('.condition-group-type');
+                const groupCaseSensitiveCheckbox = groupDiv.querySelector('.condition-group-case-sensitive');
+
+                let groupSpecificData = {
+                    enabled: isGroupEnabled,
+                    type: groupTypeSelect.value,
+                    caseSensitive: groupCaseSensitiveCheckbox.checked,
+                };
+
+                if (type === 'subject' || type === 'body') {
+                    const keywordsContainer = groupDiv.querySelector('.keywords-container-for-this-group');
+                    groupSpecificData.keywords = getKeywordsFromContainer(keywordsContainer);
+                    if (isGroupEnabled && groupSpecificData.keywords.length === 0) {
+                        alert(`Enabled '${type}' condition group cannot have empty keywords.`);
+                        validationPassed = false;
+                        return;
+                    }
+                } else { // sender, recipient, cc
+                    const addressInput = groupDiv.querySelector('.condition-group-address');
+                    groupSpecificData.address = addressInput.value.trim();
+                    if (isGroupEnabled && !groupSpecificData.address) {
+                        alert(`Enabled '${type}' condition group must have an address.`);
+                        validationPassed = false;
+                        return;
+                    }
+                }
+                collectedGroupsData.push(groupSpecificData);
+            });
+
+            if (!validationPassed) return; // Stop processing if a validation failed
+
+            conditions[type] = collectedGroupsData;
+
+            // If main toggle is on, but no groups were added and this type requires at least one group if enabled.
+            // This specific validation might be too strict if user can enable section but not add groups yet.
+            // For now, an empty array `conditions[type]` means "section enabled, but no active groups".
+            // The background script will need to interpret this correctly (e.g., if conditions[type] is empty, it doesn't match anything for this type).
+        });
+
+        if (!validationPassed) {
+            return; // Stop form submission if any validation failed
         }
 
-        // 收集发件人条件
-        const senderCondition = {};
-        if (senderConditionToggle.checked) {
-            senderCondition.enabled = true;
-            senderCondition.type = senderConditionType.value;
-            senderCondition.address = senderAddressInput.value;
-            senderCondition.caseSensitive = senderCaseSensitiveCheckbox.checked;
-
-            if (!senderCondition.address) {
-                alert('请输入发件人地址！');
-                return;
-            }
-        } else {
-            senderCondition.enabled = false;
-        }
-
-        // 收集收件人条件
-        const recipientCondition = {};
-        if (recipientConditionToggle.checked) {
-            recipientCondition.enabled = true;
-            recipientCondition.type = recipientConditionType.value;
-            recipientCondition.address = recipientAddressInput.value;
-            recipientCondition.caseSensitive = recipientCaseSensitiveCheckbox.checked;
-
-            if (!recipientCondition.address) {
-                alert('请输入收件人地址！');
-                return;
-            }
-        } else {
-            recipientCondition.enabled = false;
-        }
-
-        // 收集抄送条件
-        const ccCondition = {};
-        if (ccConditionToggle.checked) {
-            ccCondition.enabled = true;
-            ccCondition.type = ccConditionType.value;
-            ccCondition.address = ccAddressInput.value.trim();
-            ccCondition.caseSensitive = ccCaseSensitiveCheckbox.checked;
-
-            if (!ccCondition.address) {
-                alert('请输入抄送地址！');
-                return;
-            }
-        } else {
-            ccCondition.enabled = false;
-        }
-
-        // 收集正文条件
-        const bodyCondition = {};
-        if (bodyConditionToggle.checked) {
-            bodyCondition.enabled = true;
-            bodyCondition.type = bodyConditionType.value;
-            bodyCondition.keywords = getKeywordsFromContainer(bodyKeywordsContainer);
-            bodyCondition.caseSensitive = bodyCaseSensitiveCheckbox.checked;
-
-            if (bodyCondition.keywords.length === 0) {
-                alert('请至少为正文条件输入一个关键字！');
-                return;
-            }
-        } else {
-            bodyCondition.enabled = false;
-        }
-
-        conditions = {
-            subject: subjectCondition,
-            sender: senderCondition,
-            recipient: recipientCondition,
-            cc: ccCondition,
-            body: bodyCondition,
-        };
     } else { // conditionMode === 'ai'
         const userPrompt = userAiPromptInput.value.trim();
         if (!userPrompt) {
@@ -626,17 +739,11 @@ ruleForm.addEventListener('submit', async (e) => {
             return;
         }
         aiPromptDetails = {
-            system: DEFAULT_SYSTEM_PROMPT, // Store the system prompt used at the time of saving
+            system: DEFAULT_SYSTEM_PROMPT,
             user: userPrompt
         };
-        // For AI mode, individual conditions are implicitly disabled or not applicable
-        conditions = {
-            subject: { enabled: false },
-            sender: { enabled: false },
-            recipient: { enabled: false },
-            cc: { enabled: false },
-            body: { enabled: false },
-        };
+        // For AI mode, traditional conditions are empty arrays
+        conditionTypes.forEach(type => conditions[type] = []);
     }
 
     // 收集操作
@@ -908,70 +1015,27 @@ function editRule(rule) {
         userAiPromptInput.value = ''; // Clear AI prompt for normal mode
         systemPromptDisplay.value = DEFAULT_SYSTEM_PROMPT; // Reset system prompt display
 
-        // 填充主题条件
-        if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
-            subjectConditionToggle.checked = true;
-            toggleConditionFields('subject', true);
-            subjectConditionType.value = rule.conditions.subject.type || 'include';
-            subjectCaseSensitiveCheckbox.checked = rule.conditions.subject.caseSensitive || false;
-            populateKeywordsContainer(subjectKeywordsContainer, rule.conditions.subject.keywords);
-        } else {
-            subjectConditionToggle.checked = false;
-            toggleConditionFields('subject', false);
-            populateKeywordsContainer(subjectKeywordsContainer, []); // 默认添加一个空输入框
-        }
+        conditionTypes.forEach(type => {
+            const elements = conditionElements[type];
+            const conditionGroups = rule.conditions[type]; // This is now an array of groups
 
-        // 填充发件人条件
-        if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
-            senderConditionToggle.checked = true;
-            toggleConditionFields('sender', true);
-            senderConditionType.value = rule.conditions.sender.type || 'include';
-            senderAddressInput.value = rule.conditions.sender.address || '';
-            senderCaseSensitiveCheckbox.checked = rule.conditions.sender.caseSensitive || false;
-        } else {
-            senderConditionToggle.checked = false;
-            toggleConditionFields('sender', false);
-            senderAddressInput.value = '';
-        }
+            if (conditionGroups && Array.isArray(conditionGroups) && conditionGroups.length > 0) {
+                elements.toggle.checked = true;
+                toggleConditionFields(type, true); // Enable the section and "Add Group" button
 
-        // 填充收件人条件
-        if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
-            recipientConditionToggle.checked = true;
-            toggleConditionFields('recipient', true);
-            recipientConditionType.value = rule.conditions.recipient.type || 'include';
-            recipientAddressInput.value = rule.conditions.recipient.address || '';
-            recipientCaseSensitiveCheckbox.checked = rule.conditions.recipient.caseSensitive || false;
-        } else {
-            recipientConditionToggle.checked = false;
-            toggleConditionFields('recipient', false);
-            recipientAddressInput.value = '';
-        }
-
-        // 填充抄送条件
-        if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
-            ccConditionToggle.checked = true;
-            toggleConditionFields('cc', true);
-            ccConditionType.value = rule.conditions.cc.type || 'include';
-            ccAddressInput.value = rule.conditions.cc.address || '';
-            ccCaseSensitiveCheckbox.checked = rule.conditions.cc.caseSensitive || false;
-        } else {
-            ccConditionToggle.checked = false;
-            toggleConditionFields('cc', false);
-            ccAddressInput.value = '';
-        }
-
-        // 填充正文条件
-        if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
-            bodyConditionToggle.checked = true;
-            toggleConditionFields('body', true);
-            bodyConditionType.value = rule.conditions.body.type || 'include';
-            bodyCaseSensitiveCheckbox.checked = rule.conditions.body.caseSensitive || false;
-            populateKeywordsContainer(bodyKeywordsContainer, rule.conditions.body.keywords);
-        } else {
-            bodyConditionToggle.checked = false;
-            toggleConditionFields('body', false);
-            populateKeywordsContainer(bodyKeywordsContainer, []); // 默认添加一个空输入框
-        }
+                elements.container.innerHTML = ''; // Clear any existing UI in container for this type
+                conditionGroups.forEach(groupData => {
+                    // The last param to createConditionGroupUI is isOverallEnabled, which is true here
+                    const groupUI = createConditionGroupUI(type, groupData, true);
+                    elements.container.appendChild(groupUI);
+                });
+            } else {
+                // No groups or not an array, ensure section is off and container empty
+                elements.toggle.checked = false;
+                toggleConditionFields(type, false); // Disable section and "Add Group" button
+                elements.container.innerHTML = ''; // Ensure container is empty
+            }
+        });
     }
 
     // 填充操作
@@ -1015,64 +1079,68 @@ function showRuleDetail(rule) {
         }
     } else {
         detailConditions.innerHTML += `<p><strong>条件类型:</strong> 普通条件</p>`;
-        // 条件详情 (Normal conditions)
-        if (rule.conditions && rule.conditions.subject && rule.conditions.subject.enabled) {
-            const keywords = rule.conditions.subject.keywords || [];
-            let keywordDisplay = '';
-            
-            if (Array.isArray(keywords) && keywords.length > 0) {
-                if (typeof keywords[0] === 'string') {
-                    // 兼容旧格式
-                    keywordDisplay = keywords.join(', ');
-                } else {
-                    // 新格式：显示关键字和逻辑连接符
-                    keywordDisplay = keywords.map((item, index) => {
-                        let result = `"${item.keyword}"`;
-                        if (index < keywords.length - 1 && item.logic) {
-                            result += ` ${item.logic === 'or' ? '或' : '且'} `;
+
+        conditionTypes.forEach(type => {
+            const conditionGroups = rule.conditions[type]; // This is an array of groups
+            const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+
+            if (conditionGroups && Array.isArray(conditionGroups) && conditionGroups.length > 0) {
+                let groupsHtml = '';
+                conditionGroups.forEach((group, index) => {
+                    groupsHtml += `<div class="condition-group-detail ms-3 mb-2 p-2 border rounded">`;
+                    groupsHtml += `<p class="mb-1"><strong>${typeName} Group ${index + 1}:</strong> ${group.enabled ? '(Enabled)' : '(Disabled)'}</p>`;
+                    groupsHtml += `<p class="mb-1 ms-2">Type: ${group.type === 'include' ? 'Include' : 'Exclude'}</p>`;
+                    groupsHtml += `<p class="mb-1 ms-2">Case Sensitive: ${group.caseSensitive ? 'Yes' : 'No'}</p>`;
+
+                    if (type === 'subject' || type === 'body') {
+                        const keywords = group.keywords || [];
+                        let keywordDisplay = 'N/A';
+                        if (keywords.length > 0) {
+                             keywordDisplay = keywords.map((item, kwIndex) => {
+                                let result = `"${item.keyword}"`;
+                                if (kwIndex < keywords.length - 1 && item.logic) {
+                                    result += ` ${item.logic.toUpperCase()} `;
+                                }
+                                return result;
+                            }).join('');
                         }
-                        return result;
-                    }).join('');
+                        groupsHtml += `<p class="mb-0 ms-2">Keywords: ${keywordDisplay}</p>`;
+                    } else { // sender, recipient, cc
+                        groupsHtml += `<p class="mb-0 ms-2">Address: ${group.address || 'N/A'}</p>`;
+                    }
+                    groupsHtml += `</div>`;
+                });
+                if (groupsHtml) {
+                     detailConditions.innerHTML += groupsHtml;
+                } else {
+                    detailConditions.innerHTML += `<p><strong>${typeName}:</strong> No active groups.</p>`;
+                }
+
+            } else {
+                // Compatibility with old single object structure (if any rules still use it)
+                // This part might be less necessary if all rules are saved with new structure.
+                const legacyCondition = rule.conditions[type];
+                if (legacyCondition && typeof legacyCondition === 'object' && legacyCondition.enabled) {
+                    let contentDisplay = '';
+                     if (type === 'subject' || type === 'body') {
+                        const keywords = legacyCondition.keywords || [];
+                        contentDisplay = keywords.map((item, kwIndex) => {
+                            let result = `"${item.keyword}"`;
+                            if (kwIndex < keywords.length - 1 && item.logic) {
+                                result += ` ${item.logic.toUpperCase()} `;
+                            }
+                            return result;
+                        }).join('');
+                        contentDisplay = `Keywords: ${contentDisplay}`;
+                    } else {
+                        contentDisplay = `Address: ${legacyCondition.address}`;
+                    }
+                    detailConditions.innerHTML += `<p><strong>${typeName}:</strong> ${legacyCondition.type === 'include' ? 'Include' : 'Exclude'} ${contentDisplay} ${legacyCondition.caseSensitive ? '(Case Sensitive)' : ''} (Legacy format)</p>`;
+                } else {
+                    detailConditions.innerHTML += `<p><strong>${typeName}:</strong> No conditions set.</p>`;
                 }
             }
-            
-            detailConditions.innerHTML += `<p><strong>主题:</strong> ${rule.conditions.subject.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.subject.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-        }
-
-        if (rule.conditions && rule.conditions.sender && rule.conditions.sender.enabled) {
-            detailConditions.innerHTML += `<p><strong>发件人:</strong> ${rule.conditions.sender.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.sender.address}${rule.conditions.sender.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-        }
-
-        if (rule.conditions && rule.conditions.recipient && rule.conditions.recipient.enabled) {
-            detailConditions.innerHTML += `<p><strong>收件人:</strong> ${rule.conditions.recipient.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.recipient.address}${rule.conditions.recipient.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-        }
-
-        if (rule.conditions && rule.conditions.cc && rule.conditions.cc.enabled) {
-            detailConditions.innerHTML += `<p><strong>抄送:</strong> ${rule.conditions.cc.type === 'include' ? '包含' : '不包含'}地址 ${rule.conditions.cc.address}${rule.conditions.cc.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-        }
-
-        if (rule.conditions && rule.conditions.body && rule.conditions.body.enabled) {
-            const keywords = rule.conditions.body.keywords || [];
-            let keywordDisplay = '';
-            
-            if (Array.isArray(keywords) && keywords.length > 0) {
-                if (typeof keywords[0] === 'string') {
-                    // 兼容旧格式
-                    keywordDisplay = keywords.join(', ');
-                } else {
-                    // 新格式：显示关键字和逻辑连接符
-                    keywordDisplay = keywords.map((item, index) => {
-                        let result = `"${item.keyword}"`;
-                        if (index < keywords.length - 1 && item.logic) {
-                            result += ` ${item.logic === 'or' ? '或' : '且'} `;
-                        }
-                        return result;
-                    }).join('');
-                }
-            }
-            
-            detailConditions.innerHTML += `<p><strong>正文内容:</strong> ${rule.conditions.body.type === 'include' ? '包含' : '不包含'}关键字 ${keywordDisplay}${rule.conditions.body.caseSensitive ? ' (区分大小写)' : ''}</p>`;
-        }
+        });
     }
 
     // 操作详情
@@ -1220,6 +1288,36 @@ initializeTagSelect();
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Options页面初始化开始...');
     
+    // Initialize "Add Group" button listeners after DOM is loaded
+    conditionTypes.forEach(type => {
+        // Ensure containers exist for addConditionGroupEventListener to potentially use
+        // This is more of a safeguard if HTML is not perfectly set up with all containers
+        if (!document.getElementById(`${type}ConditionsContainer`)) {
+            console.warn(`Container for ${type} not found during DOMContentLoaded init.`);
+        }
+         // Ensure add buttons exist
+        if (!document.getElementById(`add${type.charAt(0).toUpperCase() + type.slice(1)}GroupBtn`)) {
+            console.warn(`Add button for ${type} not found during DOMContentLoaded init.`);
+        }
+        addConditionGroupEventListener(type); // Call them here
+    });
+     // Initial setup of Add buttons to be disabled
+    conditionTypes.forEach(type => {
+        const elements = conditionElements[type];
+        if (elements.addBtn) {
+            elements.addBtn.disabled = true; // Start disabled, main toggle will enable it
+        }
+        // Hide legacy single field wrappers
+        const legacyWrapperId = `${type}ConditionFields`;
+        const legacyWrapper = document.getElementById(legacyWrapperId);
+        if (legacyWrapper) {
+            legacyWrapper.style.display = 'none';
+        }
+        if (elements.keywordsContainer) elements.keywordsContainer.style.display = 'none';
+        if (elements.addressInput) elements.addressInput.style.display = 'none';
+    });
+
+
     try {
         const storageResult = await chrome.storage.local.get([
             'aliMailTags', 'aliMailFolders', 'aliMailRules', 'llmApiConfigs' // Changed from geminiAiConfig
