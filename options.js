@@ -76,19 +76,20 @@ function clearForm() {
 
     conditionTypes.forEach(type => {
         const elements = conditionElements[type];
-        if (elements.toggle) elements.toggle.checked = false;
+        if (elements.toggle) {
+            elements.toggle.checked = false;
+        }
 
-        // Clear the main container for condition groups
         if (elements.container) {
             elements.container.innerHTML = '';
         }
 
-        // Disable "Add Group" button
         if (elements.addBtn) {
             elements.addBtn.disabled = true;
+            elements.addBtn.style.display = 'none'; // Explicitly hide
         }
 
-        // Legacy fields cleanup (will be mostly removed once editRule is refactored)
+        // Legacy fields cleanup
         if (elements.typeSelect) elements.typeSelect.disabled = true;
         if (elements.caseSensitiveCheckbox) elements.caseSensitiveCheckbox.disabled = true;
         if (elements.keywordsContainer) { // old subjectKeywordsContainer / bodyKeywordsContainer
@@ -159,10 +160,14 @@ function toggleConditionFields(conditionType, enabled) {
     // This function is now primarily for the main toggle controlling the "Add Group" button
     // and the overall state of existing groups for that type.
     const elements = conditionElements[conditionType];
-    if (!elements) return;
+    if (!elements) {
+        console.error(`toggleConditionFields: Elements for type ${conditionType} not found.`);
+        return;
+    }
 
     if (elements.addBtn) {
         elements.addBtn.disabled = !enabled;
+        elements.addBtn.style.display = enabled ? 'inline-block' : 'none'; // Manage visibility
     }
 
     // Disable/Enable all controls within each group of this type
@@ -1288,27 +1293,41 @@ initializeTagSelect();
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Options页面初始化开始...');
     
-    // Initialize "Add Group" button listeners after DOM is loaded
-    conditionTypes.forEach(type => {
-        // Ensure containers exist for addConditionGroupEventListener to potentially use
-        // This is more of a safeguard if HTML is not perfectly set up with all containers
-        if (!document.getElementById(`${type}ConditionsContainer`)) {
-            console.warn(`Container for ${type} not found during DOMContentLoaded init.`);
-        }
-         // Ensure add buttons exist
-        if (!document.getElementById(`add${type.charAt(0).toUpperCase() + type.slice(1)}GroupBtn`)) {
-            console.warn(`Add button for ${type} not found during DOMContentLoaded init.`);
-        }
-        addConditionGroupEventListener(type); // Call them here
-    });
-     // Initial setup of Add buttons to be disabled
+    // Initialize "Add Group" button listeners and main toggle listeners
     conditionTypes.forEach(type => {
         const elements = conditionElements[type];
-        if (elements.addBtn) {
-            elements.addBtn.disabled = true; // Start disabled, main toggle will enable it
+
+        // Check for essential elements for this condition type
+        if (!elements.toggle || !elements.container || !elements.addBtn) {
+            console.error(`Initialization skipped for condition type "${type}": Missing one or more essential DOM elements (toggle, container, or addBtn).`);
+            // Optionally, disable the toggle if its dependent elements are missing
+            if(elements.toggle) elements.toggle.disabled = true;
+            return; // Skip setting up listeners for this type
         }
+
+        addConditionGroupEventListener(type);
+
+        // Setup main toggle listener
+        elements.toggle.addEventListener('change', (e) => {
+            toggleConditionFields(type, e.target.checked);
+            // If newly checked and no groups exist, optionally add one (currently commented out)
+            // if (e.target.checked && elements.container.children.length === 0) {
+            //     const newGroup = createConditionGroupUI(type, null, true);
+            //     elements.container.appendChild(newGroup);
+            // }
+        });
+
+        // Initial state for "Add Group" button based on toggle
+        if (!elements.toggle.checked) {
+            elements.addBtn.style.display = 'none';
+            elements.addBtn.disabled = true;
+        } else {
+            elements.addBtn.style.display = 'inline-block'; // Or 'block'
+            elements.addBtn.disabled = false;
+        }
+
         // Hide legacy single field wrappers
-        const legacyWrapperId = `${type}ConditionFields`;
+        const legacyWrapperId = `${type}ConditionFields`; // e.g. subjectConditionFields
         const legacyWrapper = document.getElementById(legacyWrapperId);
         if (legacyWrapper) {
             legacyWrapper.style.display = 'none';
